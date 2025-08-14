@@ -67,7 +67,7 @@ const Cart: React.FC = () => {
         estado: 'pidiendo'
       };
 
-      const response = await fetch('/api-proxy/webhook/luis-res/hacer-pedido', {
+      const response = await fetch('https://n8n.alliasoft.com/webhook/luis-res/hacer-pedido', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

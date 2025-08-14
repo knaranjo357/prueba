@@ -34,7 +34,7 @@ interface Order {
   estado: string;
 }
 
-const ORDERS_API = '/api-proxy/webhook/luis-res/pedidos';
+const ORDERS_API = 'https://n8n.alliasoft.com/webhook/luis-res/pedidos';
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -513,24 +513,9 @@ Estado: ${order.estado}
                     <div>
                       <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
                       <div className="bg-gray-50 p-3 rounded-lg text-sm">
-                        {(order["detalle pedido"] || '').split(';').filter(item => item.trim()).map((item, index) => {
-                          const cleanItem = item.trim();
-                          if (cleanItem.startsWith('- ')) {
-                            const parts = cleanItem.substring(2).split(',');
-                            if (parts.length >= 3) {
-                              const quantity = parts[0].trim();
-                              const name = parts[1].trim();
-                              const price = parseInt(parts[2].trim());
-                              return (
-                                <div key={index} className="flex justify-between items-center py-1">
-                                  <span>{quantity} x {name}</span>
-                                  <span className="font-medium">${price.toLocaleString()}</span>
-                                </div>
-                              );
-                            }
-                          }
-                          return <div key={index}>{cleanItem}</div>;
-                        })}
+                        {(order.detalle_pedido || '').split('\n').map((line, index) => (
+                          <div key={index}>{line}</div>
+                        ))}
                       </div>
                     </div>
                   </div>

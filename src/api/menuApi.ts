@@ -1,6 +1,6 @@
 import { MenuItem } from '../types';
 
-const API_URL = '/api-proxy/webhook/luis-res/menu';
+const API_URL = 'https://n8n.alliasoft.com/webhook/luis-res/menu';
 
 // Cache para mejorar rendimiento
 let cachedMenuItems: MenuItem[] | null = null;

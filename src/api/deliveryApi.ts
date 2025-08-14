@@ -4,7 +4,7 @@ interface DeliveryArea {
   precio: number;
 }
 
-const API_URL = '/api-proxy/webhook/luis-res/domicilios';
+const API_URL = 'https://n8n.alliasoft.com/webhook/luis-res/domicilios';
 
 // Cache para mejorar rendimiento
 let cachedDeliveryAreas: DeliveryArea[] | null = null;
