@@ -30,26 +30,84 @@ type MenuItemWithRow = MenuItem & { row_number?: number };
 const ORDERS_API = 'https://n8n.alliasoft.com/webhook/luis-res/pedidos';
 const MENU_API = 'https://n8n.alliasoft.com/webhook/luis-res/menu';
 
-// ===== Helpers para impresión POS 80 =====
+/// ===== Helpers para impresión POS 80 =====
 const COLS = 42; // ancho típico (80mm)
 const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join('');
 const padRight = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + repeat(' ', n - s.length));
-const padLeft = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : repeat(' ', n - s.length) + s);
-const center = (s: string) => {
+const padLeft  = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : repeat(' ', n - s.length) + s);
+const center   = (s: string) => {
   const len = Math.min(s.length, COLS);
   const left = Math.floor((COLS - len) / 2);
   return repeat(' ', Math.max(0, left)) + s.slice(0, COLS);
 };
-const money = (n: number) => `$${(n || 0).toLocaleString()}`;
+const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
 const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
 
-const formatItemLine = (qty: string, name: string, priceNum: number) => {
-  const price = money(priceNum);
-  const leftText = `${qty} ${name}`.trim();
-  const maxLeft = COLS - price.length - 1; // 1 espacio
-  const clippedLeft = leftText.length > maxLeft ? leftText.slice(0, maxLeft) : leftText;
-  return padRight(clippedLeft, maxLeft) + ' ' + padLeft(price, price.length);
+// Envuelve texto a un ancho fijo, respetando palabras; parte palabras muy largas.
+const wrapText = (text: string, width: number): string[] => {
+  if (width <= 0) return [text];
+  const rawTokens = text.trim().split(/\s+/).filter(Boolean);
+  const tokens: string[] = [];
+  for (const t of rawTokens) {
+    if (t.length <= width) tokens.push(t);
+    else {
+      for (let i = 0; i < t.length; i += width) tokens.push(t.slice(i, i + width));
+    }
+  }
+  const lines: string[] = [];
+  let line = '';
+  for (const tok of tokens) {
+    if (!line.length) line = tok;
+    else if ((line + ' ' + tok).length <= width) line += ' ' + tok;
+    else { lines.push(line); line = tok; }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [''];
 };
+
+// Campo "Etiqueta: valor" con wrap e indentación del valor
+const wrapLabelValue = (label: string, value: string): string[] => {
+  const prefix = `${label}: `;
+  const valueWidth = Math.max(0, COLS - prefix.length);
+  const vLines = wrapText(value || '', valueWidth);
+  if (!vLines.length) return [padRight(prefix, COLS)];
+  const out: string[] = [];
+  out.push(padRight(prefix + vLines[0], COLS));
+  const indent = repeat(' ', prefix.length);
+  for (let i = 1; i < vLines.length; i++) out.push(padRight(indent + vLines[i], COLS));
+  return out;
+};
+
+// Línea "Etiqueta .... $valor" con el monto alineado a la derecha
+const totalLine = (label: string, amount: number): string => {
+  const right = money(amount);
+  const leftWidth = COLS - right.length - 1; // 1 espacio separador
+  return padRight(label, leftWidth) + ' ' + right;
+};
+
+// Ítem con precio a la derecha y nombre envuelto a la izquierda
+const formatItemBlock = (qty: string, name: string, priceNum: number): string[] => {
+  const price = money(priceNum);
+  const qtyLabel = qty ? `${qty} ` : '';
+  const rightWidth = price.length + 1; // espacio + precio
+  const leftWidth = COLS - rightWidth;
+
+  const leftText = (qtyLabel + (name || '')).trim();
+  const leftLines = wrapText(leftText, leftWidth);
+
+  const out: string[] = [];
+  // Primera línea con precio a la derecha
+  const firstLeft = padRight(leftLines[0] || '', leftWidth);
+  out.push(firstLeft + ' ' + price);
+
+  // Siguientes líneas sin precio, alineadas bajo el nombre (se indenta el espacio del qty)
+  const indent = repeat(' ', qtyLabel.length || 0);
+  for (let i = 1; i < leftLines.length; i++) {
+    out.push(padRight(indent + leftLines[i], COLS));
+  }
+  return out;
+};
+
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -195,85 +253,81 @@ const Admin: React.FC = () => {
   };
 
   const printOrder = async (order: Order) => {
-    const customerName = order.nombre || 'Cliente';
-    const customerPhone = cleanPhone(order.numero);
+  const customerName = order.nombre || 'Cliente';
+  const customerPhone = cleanPhone(order.numero);
+  const items = parseDetails(order["detalle pedido"]);
+  const subtotal = order.valor_restaurante || 0;
+  const domicilio = order.valor_domicilio || 0;
+  const total = subtotal + domicilio;
 
-    const items = parseDetails(order["detalle pedido"]);
+  const lines: string[] = [];
+  lines.push(repeat('=', COLS));
+  lines.push(center('LUIS RES'));
+  lines.push(center('Cra 37 #109-24'));
+  lines.push(center('Floridablanca - Caldas'));
+  lines.push(repeat('=', COLS));
 
-    const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
+  lines.push(padRight(`PEDIDO #${order.row_number}`, COLS));
+  lines.push(...wrapLabelValue('Fecha', order.fecha || ''));
+  lines.push(...wrapLabelValue('Cliente', customerName));
+  lines.push(...wrapLabelValue('Teléfono', customerPhone));
+  lines.push(...wrapLabelValue('Dirección', order.direccion || ''));
 
-    // URL del pedido (ancla) para poder saltar directo desde el recibo digital
-    const appURL = window.location.origin + window.location.pathname;
-    const orderURL = `${appURL}#pedido-${order.row_number}`;
+  lines.push(repeat('-', COLS));
+  lines.push(center('DETALLE DEL PEDIDO'));
+  lines.push(repeat('-', COLS));
 
-    const lines: string[] = [];
-    lines.push(repeat('=', COLS));
-    lines.push(center('LUIS RES'));
-    lines.push(center('Cra 37 #109-24'));
-    lines.push(center('Floridablanca - Caldas'));
-    lines.push(repeat('=', COLS));
-    lines.push(padRight(`PEDIDO #${order.row_number}`, COLS));
-    lines.push(padRight(`Fecha: ${order.fecha}`, COLS));
-    lines.push(padRight(`Cliente: ${customerName}`, COLS));
-    lines.push(padRight(`Teléfono: ${customerPhone}`, COLS));
-    lines.push(padRight(`Dirección: ${order.direccion}`, COLS));
-    lines.push(repeat('-', COLS));
-    lines.push(center('DETALLE DEL PEDIDO'));
-    lines.push(repeat('-', COLS));
+  items.forEach(({ quantity, name, priceNum }) => {
+    const block = formatItemBlock(quantity || '1', name, priceNum);
+    block.forEach(l => lines.push(l));
+  });
 
-    items.forEach(({ quantity, name, priceNum }) => {
-      lines.push(formatItemLine(quantity || '1', name, priceNum));
-    });
+  lines.push(repeat('-', COLS));
+  lines.push(totalLine('Subtotal', subtotal));
+  lines.push(totalLine('Domicilio', domicilio));
+  lines.push(totalLine('TOTAL', total));
+  lines.push('');
+  lines.push(...wrapLabelValue('Método de pago', order.metodo_pago || ''));
+  lines.push(...wrapLabelValue('Estado', order.estado || ''));
+  lines.push(repeat('=', COLS));
+  lines.push(center('¡Gracias por su compra!'));
+  lines.push(repeat('=', COLS));
 
-    lines.push(repeat('-', COLS));
-    lines.push(padRight('Subtotal', COLS - money(order.valor_restaurante || 0).length) + money(order.valor_restaurante || 0));
-    lines.push(padRight('Domicilio', COLS - money(order.valor_domicilio || 0).length) + money(order.valor_domicilio || 0));
-    lines.push(padRight('TOTAL', COLS - money(total).length) + money(total));
-    lines.push('');
-    lines.push(padRight(`Método de pago: ${order.metodo_pago}`, COLS));
-    lines.push(padRight(`Estado: ${order.estado}`, COLS));
-    lines.push(repeat('=', COLS));
-    lines.push(center('¡Gracias por su compra!'));
-    lines.push(repeat('=', COLS));
+  // HTML simple sin link extra
+  const html = `
+    <div>
+      <pre>${lines.join(String.fromCharCode(10))}</pre>
+    </div>
+  `;
 
-    // Construimos HTML (con link clickeable para saltar al pedido)
-    const htmlWithLink = `
-      <div>
-        <pre>${lines.join(String.fromCharCode(10))}</pre>
-        <div style="font-family: 'Courier New', monospace; font-size: 11px;">
-          <div>Ir al pedido: <a href="${orderURL}">${customerPhone}</a></div>
-        </div>
-      </div>
-    `;
+  const printWindow = window.open('', '_blank', 'width=380,height=700');
+  if (printWindow) {
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Factura #${order.row_number}</title>
+          <style>
+            @media print { @page { size: 80mm auto; margin: 0; } }
+            body { font-family: 'Courier New', monospace; font-size: 11px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.25; }
+            pre  { white-space: pre; margin: 0; font-size: 11px; }
+          </style>
+        </head>
+        <body>
+          ${html}
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 1000);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    updateOrderStatus(order.row_number, 'impreso');
+  }
+};
 
-    const printWindow = window.open('', '_blank', 'width=380,height=700');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Factura #${order.row_number}</title>
-            <style>
-              @media print { @page { size: 80mm auto; margin: 0; } }
-              body { font-family: 'Courier New', monospace; font-size: 11px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.25; }
-              pre { white-space: pre-wrap; margin: 0; font-size: 11px; }
-              a { color: inherit; text-decoration: underline; }
-            </style>
-          </head>
-          <body>
-            ${htmlWithLink}
-            <script>
-              window.onload = function() {
-                window.print();
-                setTimeout(function() { window.close(); }, 1000);
-              }
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      updateOrderStatus(order.row_number, 'impreso');
-    }
-  };
 
   // Opciones dinámicas de filtros basadas en los datos actuales
   const statusOptions = useMemo(() => {
