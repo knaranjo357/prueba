@@ -1,21 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Settings, 
-  Users, 
-  Clock, 
-  DollarSign,
-  CheckCircle,
-  AlertCircle,
+  Settings,
   Printer,
-  Filter,
   RefreshCw,
-  Edit3,
-  Save,
-  X,
   LogOut,
   Menu as MenuIcon,
-  ShoppingBag
+  ShoppingBag,
+  ArrowUpDown
 } from 'lucide-react';
 import { fetchMenuItems } from '../api/menuApi';
 import { MenuItem } from '../types';
@@ -27,27 +18,62 @@ interface Order {
   nombre?: string;
   numero: string;
   direccion: string;
-  "detalle pedido": string;
+  "detalle pedido": string; // <- llave con espacio según tu API
   valor_restaurante: number;
   valor_domicilio: number;
   metodo_pago: string;
   estado: string;
 }
 
+type MenuItemWithRow = MenuItem & { row_number?: number };
+
 const ORDERS_API = 'https://n8n.alliasoft.com/webhook/luis-res/pedidos';
+const MENU_API = 'https://n8n.alliasoft.com/webhook/luis-res/menu';
+
+// ===== Helpers para impresión POS 80 =====
+const COLS = 42; // ancho típico (80mm)
+const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join('');
+const padRight = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + repeat(' ', n - s.length));
+const padLeft = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : repeat(' ', n - s.length) + s);
+const center = (s: string) => {
+  const len = Math.min(s.length, COLS);
+  const left = Math.floor((COLS - len) / 2);
+  return repeat(' ', Math.max(0, left)) + s.slice(0, COLS);
+};
+const money = (n: number) => `$${(n || 0).toLocaleString()}`;
+const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
+
+const formatItemLine = (qty: string, name: string, priceNum: number) => {
+  const price = money(priceNum);
+  const leftText = `${qty} ${name}`.trim();
+  const maxLeft = COLS - price.length - 1; // 1 espacio
+  const clippedLeft = leftText.length > maxLeft ? leftText.slice(0, maxLeft) : leftText;
+  return padRight(clippedLeft, maxLeft) + ' ' + padLeft(price, price.length);
+};
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'menu' | 'orders'>('menu');
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItemWithRow[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
-  const [editingItem, setEditingItem] = useState<string | null>(null);
-  const [editingOrder, setEditingOrder] = useState<number | null>(null);
+
   const [filterStatus, setFilterStatus] = useState<string>('todos');
   const [filterPayment, setFilterPayment] = useState<string>('todos');
+  const [sortBy, setSortBy] = useState<'fecha' | 'row_number'>('fecha');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Mantener sesión si ya inició previamente
+  useEffect(() => {
+    const saved = localStorage.getItem('admin_auth');
+    if (saved === '1') {
+      setIsAuthenticated(true);
+      loadMenuItems();
+      fetchOrders();
+    }
+  }, []);
 
   // Auto refresh orders every 20 seconds
   useEffect(() => {
@@ -61,6 +87,7 @@ const Admin: React.FC = () => {
     e.preventDefault();
     if (email === 'alfredo@luisres.com' && password === 'luisres') {
       setIsAuthenticated(true);
+      localStorage.setItem('admin_auth', '1');
       loadMenuItems();
       fetchOrders();
     } else {
@@ -70,6 +97,7 @@ const Admin: React.FC = () => {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    localStorage.removeItem('admin_auth');
     setEmail('');
     setPassword('');
   };
@@ -78,7 +106,9 @@ const Admin: React.FC = () => {
     try {
       setLoading(true);
       const items = await fetchMenuItems();
-      setMenuItems(items.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+      setMenuItems(
+        (items as MenuItemWithRow[]).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+      );
     } catch (error) {
       console.error('Error loading menu items:', error);
     } finally {
@@ -90,32 +120,40 @@ const Admin: React.FC = () => {
     try {
       const response = await fetch(ORDERS_API);
       const data = await response.json();
-      
       if (Array.isArray(data)) {
-        const sortedOrders = data.sort((a, b) => {
-          const dateA = new Date(a.fecha);
-          const dateB = new Date(b.fecha);
-          return dateB.getTime() - dateA.getTime();
-        });
-        setOrders(sortedOrders);
+        setOrders(data as Order[]);
       }
     } catch (error) {
       console.error('Error fetching orders:', error);
     }
   };
 
-  const updateMenuItemAvailability = async (itemId: string, disponible: boolean) => {
+  // --- MENU: toggle disponibilidad con POST ---
+  const postAvailability = async (payload: { row_number: number | null; id: number | string; disponible: boolean }) => {
+    const res = await fetch(MENU_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('No se pudo actualizar la disponibilidad');
+  };
+
+  const updateMenuItemAvailability = async (item: MenuItemWithRow, nuevoValor: boolean) => {
+    const payload = {
+      row_number: item.row_number ?? null,
+      id: (item as any).id,
+      disponible: nuevoValor,
+    };
+
+    // Optimista: aplica cambio y revierte si falla
+    setMenuItems(prev => prev.map(i => (i.id === item.id ? { ...i, disponible: nuevoValor } : i)));
     try {
-      // Aquí harías el POST a tu API para actualizar disponibilidad
-      // Por ahora solo actualizamos localmente
-      setMenuItems(prev => 
-        prev.map(item => 
-          item.id === itemId ? { ...item, disponible } : item
-        )
-      );
-      setEditingItem(null);
-    } catch (error) {
-      console.error('Error updating item:', error);
+      await postAvailability(payload);
+    } catch (err) {
+      console.error(err);
+      // revertir
+      setMenuItems(prev => prev.map(i => (i.id === item.id ? { ...i, disponible: !nuevoValor } : i)));
+      alert('No se pudo guardar el cambio. Intenta de nuevo.');
     }
   };
 
@@ -128,144 +166,169 @@ const Admin: React.FC = () => {
         },
         body: JSON.stringify({
           row_number: orderNumber,
-          estado: newStatus
-        })
+          estado: newStatus,
+        }),
       });
 
       if (response.ok) {
-        setOrders(prev => 
-          prev.map(order => 
-            order.row_number === orderNumber ? { ...order, estado: newStatus } : order
-          )
-        );
-        setEditingOrder(null);
+        setOrders(prev => prev.map(order => (order.row_number === orderNumber ? { ...order, estado: newStatus } : order)));
       }
     } catch (error) {
       console.error('Error updating order:', error);
     }
   };
 
+  const parseDetails = (raw: string) => {
+    return raw
+      .split(';')
+      .filter(item => item.trim())
+      .map(item => {
+        const parts = item.trim().split(',');
+        if (parts.length >= 3) {
+          const quantity = parts[0].replace('-', '').trim();
+          const name = parts[1].trim();
+          const priceNum = parseInt(parts[2].replace(/[^0-9]/g, ''), 10) || 0;
+          return { quantity, name, priceNum };
+        }
+        return { quantity: '', name: item.trim(), priceNum: 0 };
+      });
+  };
+
   const printOrder = async (order: Order) => {
-    // Generar contenido de factura térmica para POS80C
     const customerName = order.nombre || 'Cliente';
-    const customerPhone = order.numero.replace('@s.whatsapp.net', '');
-    
-    // Parsear detalle del pedido
-    const orderItems = order["detalle pedido"].split(';').filter(item => item.trim()).map(item => {
-      const parts = item.trim().split(',');
-      if (parts.length >= 3) {
-        const quantity = parts[0].replace('-', '').trim();
-        const name = parts[1].trim();
-        const price = parts[2].trim();
-        return `${quantity} ${name} - $${parseInt(price).toLocaleString()}`;
-      }
-      return item.trim();
+    const customerPhone = cleanPhone(order.numero);
+
+    const items = parseDetails(order["detalle pedido"]);
+
+    const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
+
+    // URL del pedido (ancla) para poder saltar directo desde el recibo digital
+    const appURL = window.location.origin + window.location.pathname;
+    const orderURL = `${appURL}#pedido-${order.row_number}`;
+
+    const lines: string[] = [];
+    lines.push(repeat('=', COLS));
+    lines.push(center('LUIS RES'));
+    lines.push(center('Cra 37 #109-24'));
+    lines.push(center('Floridablanca - Caldas'));
+    lines.push(repeat('=', COLS));
+    lines.push(padRight(`PEDIDO #${order.row_number}`, COLS));
+    lines.push(padRight(`Fecha: ${order.fecha}`, COLS));
+    lines.push(padRight(`Cliente: ${customerName}`, COLS));
+    lines.push(padRight(`Teléfono: ${customerPhone}`, COLS));
+    lines.push(padRight(`Dirección: ${order.direccion}`, COLS));
+    lines.push(repeat('-', COLS));
+    lines.push(center('DETALLE DEL PEDIDO'));
+    lines.push(repeat('-', COLS));
+
+    items.forEach(({ quantity, name, priceNum }) => {
+      lines.push(formatItemLine(quantity || '1', name, priceNum));
     });
-    
-    const total = order.valor_restaurante + order.valor_domicilio;
-    
-    const receiptContent = `
-================================
-        LUIS RES
-    Cra 37 #109-24
-  Floridablanca - Caldas
-================================
 
-PEDIDO #${order.row_number}
-Fecha: ${order.fecha}
-Cliente: ${customerName}
-Teléfono: ${customerPhone}
-Dirección: ${order.direccion}
+    lines.push(repeat('-', COLS));
+    lines.push(padRight('Subtotal', COLS - money(order.valor_restaurante || 0).length) + money(order.valor_restaurante || 0));
+    lines.push(padRight('Domicilio', COLS - money(order.valor_domicilio || 0).length) + money(order.valor_domicilio || 0));
+    lines.push(padRight('TOTAL', COLS - money(total).length) + money(total));
+    lines.push('');
+    lines.push(padRight(`Método de pago: ${order.metodo_pago}`, COLS));
+    lines.push(padRight(`Estado: ${order.estado}`, COLS));
+    lines.push(repeat('=', COLS));
+    lines.push(center('¡Gracias por su compra!'));
+    lines.push(repeat('=', COLS));
 
---------------------------------
-DETALLE DEL PEDIDO:
-${orderItems.join('\n')}
-
---------------------------------
-Subtotal: $${order.valor_restaurante.toLocaleString()}
-Domicilio: $${order.valor_domicilio.toLocaleString()}
-TOTAL: $${total.toLocaleString()}
-
-Método de pago: ${order.metodo_pago}
-Estado: ${order.estado}
-
-================================
-    ¡Gracias por su compra!
-================================
+    // Construimos HTML (con link clickeable para saltar al pedido)
+    const htmlWithLink = `
+      <div>
+        <pre>${lines.join(String.fromCharCode(10))}</pre>
+        <div style="font-family: 'Courier New', monospace; font-size: 11px;">
+          <div>Ir al pedido: <a href="${orderURL}">${customerPhone}</a></div>
+        </div>
+      </div>
     `;
 
-    // Crear ventana de impresión optimizada para POS80C
-    const printWindow = window.open('', '_blank', 'width=300,height=600');
+    const printWindow = window.open('', '_blank', 'width=380,height=700');
     if (printWindow) {
       printWindow.document.write(`
         <html>
           <head>
             <title>Factura #${order.row_number}</title>
             <style>
-              @media print {
-                @page {
-                  size: 80mm auto;
-                  margin: 0;
-                }
-              }
-              body { 
-                font-family: 'Courier New', monospace; 
-                font-size: 11px; 
-                width: 58mm; 
-                margin: 0; 
-                padding: 2mm;
-                line-height: 1.2;
-              }
-              pre { 
-                white-space: pre-wrap; 
-                margin: 0; 
-                font-size: 11px;
-              }
+              @media print { @page { size: 80mm auto; margin: 0; } }
+              body { font-family: 'Courier New', monospace; font-size: 11px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.25; }
+              pre { white-space: pre-wrap; margin: 0; font-size: 11px; }
+              a { color: inherit; text-decoration: underline; }
             </style>
           </head>
           <body>
-            <pre>${receiptContent}</pre>
+            ${htmlWithLink}
             <script>
               window.onload = function() {
                 window.print();
-                setTimeout(function() {
-                  window.close();
-                }, 1000);
+                setTimeout(function() { window.close(); }, 1000);
               }
             </script>
           </body>
         </html>
       `);
       printWindow.document.close();
-      
-      // Cambiar estado a impreso después de imprimir
       updateOrderStatus(order.row_number, 'impreso');
     }
   };
 
+  // Opciones dinámicas de filtros basadas en los datos actuales
+  const statusOptions = useMemo(() => {
+    const setVals = new Set<string>();
+    orders.forEach(o => { if (o?.estado) setVals.add(o.estado); });
+    return ['todos', ...Array.from(setVals)];
+  }, [orders]);
+
+  const paymentOptions = useMemo(() => {
+    const setVals = new Set<string>();
+    orders.forEach(o => { if (o?.metodo_pago) setVals.add(o.metodo_pago); });
+    return ['todos', ...Array.from(setVals)];
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
+    const byFilters = orders.filter(order => {
       const statusMatch = filterStatus === 'todos' || order.estado === filterStatus;
-      const paymentMatch = filterPayment === 'todos' || order.metodo_pago.includes(filterPayment);
+      const paymentMatch = filterPayment === 'todos' || order.metodo_pago === filterPayment;
       return statusMatch && paymentMatch;
     });
-  }, [orders, filterStatus, filterPayment]);
+
+    const sorted = [...byFilters].sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'fecha') {
+        const aT = new Date(a.fecha).getTime() || 0;
+        const bT = new Date(b.fecha).getTime() || 0;
+        cmp = aT - bT;
+      } else {
+        const aN = a.row_number ?? 0;
+        const bN = b.row_number ?? 0;
+        cmp = aN - bN;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return sorted;
+  }, [orders, filterStatus, filterPayment, sortBy, sortDir]);
 
   const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
+    switch ((status || '').toLowerCase()) {
       case 'pendiente': return 'bg-yellow-100 text-yellow-800';
       case 'preparando': return 'bg-blue-100 text-blue-800';
       case 'listo': return 'bg-green-100 text-green-800';
       case 'en camino': return 'bg-purple-100 text-purple-800';
       case 'entregado': return 'bg-gray-100 text-gray-800';
       case 'impreso': return 'bg-indigo-100 text-indigo-800';
+      case 'confirmado': return 'bg-teal-100 text-teal-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getPaymentColor = (payment: string) => {
-    if (payment.includes('confirmada')) return 'bg-green-100 text-green-800';
-    if (payment.includes('espera')) return 'bg-yellow-100 text-yellow-800';
+    const p = (payment || '').toLowerCase();
+    if (p.includes('confirmada')) return 'bg-green-100 text-green-800';
+    if (p.includes('espera')) return 'bg-yellow-100 text-yellow-800';
     return 'bg-blue-100 text-blue-800';
   };
 
@@ -281,29 +344,23 @@ Estado: ${order.estado}
           
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gold/50"
-                placeholder="alfredo@luisres.com"
                 required
               />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Contraseña
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gold/50"
-                placeholder="••••••••"
                 required
               />
             </div>
@@ -387,13 +444,13 @@ Estado: ${order.estado}
 
             <div className="grid gap-4">
               {menuItems.map((item) => (
-                <div key={item.id} className="bg-white rounded-lg shadow-sm border p-4">
+                <div key={item.id as any} className="bg-white rounded-lg shadow-sm border p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <h3 className="font-bold text-gray-900">{item.nombre}</h3>
                       <p className="text-sm text-gray-600 mb-2">{item.descripcion}</p>
                       <div className="flex items-center gap-2 mb-2">
-                        {item.categorias?.map((categoria) => (
+                        {item.categorias?.map((categoria: string) => (
                           <span
                             key={categoria}
                             className="bg-gold/20 text-gold px-2 py-1 rounded-full text-xs font-medium"
@@ -405,7 +462,7 @@ Estado: ${order.estado}
                       <p className="font-bold text-gold">{formatPrice(item.valor)}</p>
                     </div>
                     
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
                       <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                         item.disponible 
                           ? 'bg-green-100 text-green-800' 
@@ -413,30 +470,24 @@ Estado: ${order.estado}
                       }`}>
                         {item.disponible ? 'Disponible' : 'Agotado'}
                       </div>
-                      
-                      {editingItem === item.id ? (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => updateMenuItemAvailability(item.id, !item.disponible)}
-                            className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg"
-                          >
-                            <Save size={16} />
-                          </button>
-                          <button
-                            onClick={() => setEditingItem(null)}
-                            className="bg-gray-600 hover:bg-gray-700 text-white p-2 rounded-lg"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setEditingItem(item.id)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg"
-                        >
-                          <Edit3 size={16} />
-                        </button>
-                      )}
+
+                      {/* Switch ON/OFF */}
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={item.disponible}
+                        onClick={() => updateMenuItemAvailability(item, !item.disponible)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold/50 ${
+                          item.disponible ? 'bg-green-600' : 'bg-gray-300'
+                        }`}
+                        title={item.disponible ? 'Marcar como agotado' : 'Marcar como disponible'}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                            item.disponible ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -447,20 +498,17 @@ Estado: ${order.estado}
 
         {activeTab === 'orders' && (
           <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
               <h2 className="text-xl font-bold text-gray-900">Gestión de Pedidos</h2>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-3">
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
                   className="border border-gray-300 rounded-lg px-3 py-2"
                 >
-                  <option value="todos">Todos los estados</option>
-                  <option value="pendiente">Pendiente</option>
-                  <option value="preparando">Preparando</option>
-                  <option value="listo">Listo</option>
-                  <option value="en camino">En camino</option>
-                  <option value="entregado">Entregado</option>
+                  {statusOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt === 'todos' ? 'Todos los estados' : opt}</option>
+                  ))}
                 </select>
                 
                 <select
@@ -468,11 +516,30 @@ Estado: ${order.estado}
                   onChange={(e) => setFilterPayment(e.target.value)}
                   className="border border-gray-300 rounded-lg px-3 py-2"
                 >
-                  <option value="todos">Todos los pagos</option>
-                  <option value="efectivo">Efectivo</option>
-                  <option value="espera">Transferencia en espera</option>
-                  <option value="confirmada">Transferencia confirmada</option>
+                  {paymentOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt === 'todos' ? 'Todos los pagos' : opt}</option>
+                  ))}
                 </select>
+
+                {/* Ordenamiento */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as 'fecha' | 'row_number')}
+                    className="border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="fecha">Ordenar por fecha</option>
+                    <option value="row_number">Ordenar por N° de pedido</option>
+                  </select>
+                  <button
+                    onClick={() => setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2"
+                    title={`Orden ${sortDir === 'asc' ? 'ascendente' : 'descendente'}`}
+                  >
+                    <ArrowUpDown size={16} />
+                    {sortDir === 'asc' ? 'Asc' : 'Desc'}
+                  </button>
+                </div>
                 
                 <button
                   onClick={fetchOrders}
@@ -485,78 +552,96 @@ Estado: ${order.estado}
             </div>
 
             <div className="grid gap-4">
-              {filteredOrders.map((order) => (
-                <div key={order.row_number} className="bg-white rounded-lg shadow-sm border p-4">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="font-bold text-gray-900">Pedido #{order.row_number}</h3>
-                      <p className="text-sm text-gray-600">{order.fecha}</p>
+              {filteredOrders.map((order) => {
+                const parsed = parseDetails(order["detalle pedido"]);
+                const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
+                const phone = cleanPhone(order.numero);
+                const anchorId = `pedido-${order.row_number}`;
+                const goToAnchor = (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                };
+                return (
+                  <div key={order.row_number} id={anchorId} className="bg-white rounded-lg shadow-sm border p-4">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="font-bold text-gray-900">Pedido #{order.row_number}</h3>
+                        <p className="text-sm text-gray-600">{order.fecha}</p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.estado)}`}>
+                          {order.estado}
+                        </span>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getPaymentColor(order.metodo_pago)}`}>
+                          {order.metodo_pago}
+                        </span>
+                      </div>
                     </div>
                     
-                    <div className="flex items-center gap-2">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.estado)}`}>
-                        {order.estado}
-                      </span>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getPaymentColor(order.metodo_pago)}`}>
-                        {order.metodo_pago}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <p className="font-medium text-gray-900">{order.nombre}</p>
-                      <p className="text-sm text-gray-600">{order.numero}</p>
-                      <p className="text-sm text-gray-600">{order.direccion}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <p className="font-medium text-gray-900">{order.nombre}</p>
+                        <p className="text-sm">
+                          <a href={`#${anchorId}`} onClick={goToAnchor} className="text-blue-600 hover:underline">{phone}</a>
+                        </p>
+                        <p className="text-sm text-gray-600">{order.direccion}</p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
+                        <div className="bg-gray-50 p-3 rounded-lg text-sm">
+                          <ul className="list-disc pl-4">
+                            {parsed.map(({ quantity, name, priceNum }, index) => (
+                              <li key={index}>{`${quantity} ${name} - $${priceNum.toLocaleString()}`}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
                     </div>
                     
-                    <div>
-                      <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
-                      <div className="bg-gray-50 p-3 rounded-lg text-sm">
-                        {(order.detalle_pedido || '').split('\n').map((line, index) => (
-                          <div key={index}>{line}</div>
-                        ))}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <span className="font-bold text-gray-900">
+                          TOTAL: ${total.toLocaleString()}
+                        </span>
+                        <span className="text-sm text-gray-600">
+                          Restaurante: ${order.valor_restaurante.toLocaleString()}
+                        </span>
+                        {order.valor_domicilio > 0 && (
+                          <span className="text-sm text-gray-600">
+                            Domicilio: ${order.valor_domicilio.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => printOrder(order)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2"
+                        >
+                          <Printer size={16} />
+                          Imprimir
+                        </button>
+                        
+                        <select
+                          value={order.estado}
+                          onChange={(e) => updateOrderStatus(order.row_number, e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2"
+                        >
+                          <option value="pendiente">Pendiente</option>
+                          <option value="preparando">Preparando</option>
+                          <option value="listo">Listo</option>
+                          <option value="en camino">En camino</option>
+                          <option value="entregado">Entregado</option>
+                          <option value="impreso">Impreso</option>
+                          <option value="confirmado">Confirmado</option>
+                        </select>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <span className="font-bold text-gray-900">
-                        Total: ${order.valor_restaurante.toLocaleString()}
-                      </span>
-                      {order.valor_domicilio > 0 && (
-                        <span className="text-sm text-gray-600">
-                          + Domicilio: ${order.valor_domicilio.toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => printOrder(order)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2"
-                      >
-                        <Printer size={16} />
-                        Imprimir
-                      </button>
-                      
-                      <select
-                        value={order.estado}
-                        onChange={(e) => updateOrderStatus(order.row_number, e.target.value)}
-                        className="border border-gray-300 rounded-lg px-3 py-2"
-                      >
-                        <option value="pendiente">Pendiente</option>
-                        <option value="preparando">Preparando</option>
-                        <option value="listo">Listo</option>
-                        <option value="en camino">En camino</option>
-                        <option value="entregado">Entregado</option>
-                        <option value="impreso">Impreso</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
