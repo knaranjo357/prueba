@@ -43,6 +43,16 @@ const center   = (s: string) => {
 const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
 const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
 
+// Normaliza texto para el ticket (quita espacios raros/zero-width)
+const sanitizeForTicket = (s: string): string =>
+  (s || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\t/g, ' ')
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
+
 // Envuelve texto a un ancho fijo, respetando palabras; parte palabras muy largas.
 const wrapText = (text: string, width: number): string[] => {
   if (width <= 0) return [text];
@@ -109,36 +119,146 @@ const formatItemBlock = (qty: string, name: string, priceNum: number): string[] 
 };
 
 /* =========================
-   ESC/POS + RawBT Helpers
+   Parser robusto de detalle
    ========================= */
 
-// Convierte string (UTF-8) a bytes
-const utf8ToBytes = (str: string): number[] => {
-  const encoder = new TextEncoder(); // soporta acentos/ñ
-  return Array.from(encoder.encode(str));
+// Divide usando separadores (p. ej. ; o |) ignorando los que estén dentro de paréntesis.
+const splitOutsideParens = (s: string, separators = [';']): string[] => {
+  const sepSet = new Set(separators);
+  const out: string[] = [];
+  let buf = '';
+  let depth = 0;
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+
+    if (depth === 0 && sepSet.has(ch)) {
+      if (buf.trim()) out.push(buf.trim());
+      buf = '';
+    } else {
+      buf += ch;
+    }
+  }
+  if (buf.trim()) out.push(buf.trim());
+  return out;
 };
+
+const splitByCommaOutsideParens = (s: string): string[] =>
+  splitOutsideParens(s, [',']);
+
+const parseMoneyToInt = (s: string): number => {
+  const n = parseInt((s || '').replace(/[^0-9\-]/g, ''), 10);
+  return isNaN(n) ? 0 : n;
+};
+
+// NUEVA versión robusta para "detalle pedido"
+const parseDetails = (raw: string) => {
+  if (!raw) return [];
+  // Separamos ítems por ; o | (fuera de paréntesis)
+  const itemStrings = splitOutsideParens(raw, [';', '|']).map(x => x.trim()).filter(Boolean);
+
+  return itemStrings.map(itemStr => {
+    // Partimos por coma FUERA de paréntesis
+    const parts = splitByCommaOutsideParens(itemStr).map(x => x.trim());
+
+    // Formatos soportados:
+    // a) "2, Hamburguesa (doble, sin cebolla), $15000"
+    // b) "-2, Perro, 12.000"
+    // c) "Hamburguesa sencilla, 15000" (qty=1)
+    // d) "Producto suelto"
+    let quantity = '';
+    let name = '';
+    let priceNum = 0;
+
+    if (parts.length >= 3) {
+      quantity = parts[0].replace(/^-/, '').trim() || '1';
+      name = parts.slice(1, parts.length - 1).join(', ').trim();
+      priceNum = parseMoneyToInt(parts[parts.length - 1]);
+    } else if (parts.length === 2) {
+      quantity = '1';
+      name = parts[0];
+      priceNum = parseMoneyToInt(parts[1]);
+    } else {
+      quantity = '1';
+      name = parts[0] || '';
+      priceNum = 0;
+    }
+
+    // Normaliza cantidad
+    const qMatch = quantity.match(/-?\d+/);
+    if (qMatch) quantity = String(Math.abs(parseInt(qMatch[0], 10)));
+    else quantity = '1';
+
+    return { quantity, name, priceNum };
+  });
+};
+
+/* =========================
+   ESC/POS + RawBT Helpers
+   ========================= */
 
 // Base64 seguro para binario
 const bytesToBase64 = (bytes: number[]): string => {
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  // btoa espera Latin1; como ya es binario, sirve
   return btoa(binary);
 };
 
-// Construye payload ESC/POS a partir de líneas de texto monoespaciado
+// Mapeo básico Unicode → CP1252 (Windows-1252) para español.
+const cp1252Map: Record<string, number> = {
+  'Á': 0xC1, 'É': 0xC9, 'Í': 0xCD, 'Ó': 0xD3, 'Ú': 0xDA, 'Ü': 0xDC, 'Ñ': 0xD1,
+  'á': 0xE1, 'é': 0xE9, 'í': 0xED, 'ó': 0xF3, 'ú': 0xFA, 'ü': 0xFC, 'ñ': 0xF1,
+  '€': 0x80, '£': 0xA3, '¥': 0xA5, '¢': 0xA2, '°': 0xB0, '¿': 0xBF, '¡': 0xA1,
+  '“': 0x93, '”': 0x94, '‘': 0x91, '’': 0x92, '—': 0x97, '–': 0x96, '…': 0x85,
+};
+
+const asciiFallback: Record<string, string> = {
+  '“':'"', '”':'"', '‘':"'", '’':"'", '—':'-', '–':'-', '…':'...', '€':'EUR'
+};
+
+// Convierte string JS a bytes CP1252, con degradación segura si hace falta.
+const encodeCP1252 = (str: string): number[] => {
+  const bytes: number[] = [];
+  for (const ch of str) {
+    const code = ch.codePointAt(0)!;
+    if (code <= 0x7F) { bytes.push(code); continue; }
+    if (cp1252Map[ch] !== undefined) { bytes.push(cp1252Map[ch]); continue; }
+
+    // Normaliza diacríticos (á -> a) si no hay mapeo
+    const basic = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (basic.length === 1 && basic.charCodeAt(0) <= 0x7F) {
+      bytes.push(basic.charCodeAt(0));
+      continue;
+    }
+    // Fallback por símbolo tipográfico
+    if (asciiFallback[ch]) {
+      for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0));
+      continue;
+    }
+    // Último recurso
+    bytes.push(0x3F); // '?'
+  }
+  return bytes;
+};
+
+// Construye payload ESC/POS a partir de líneas de texto monoespaciado (CP1252)
 const buildEscposFromLines = (lines: string[]): number[] => {
   const bytes: number[] = [];
 
   // Init
   bytes.push(0x1B, 0x40); // ESC @
 
+  // Selección de página de códigos: Windows-1252 (n = 16) => ESC t n
+  bytes.push(0x1B, 0x74, 0x10);
+
   // Alineación izquierda por defecto
   bytes.push(0x1B, 0x61, 0x00); // ESC a 0
 
   // Texto + saltos de línea
   const body = lines.join('\n') + '\n';
-  bytes.push(...utf8ToBytes(body));
+  bytes.push(...encodeCP1252(body));
 
   // Feed extra antes de corte
   bytes.push(0x0A, 0x0A, 0x0A);
@@ -154,7 +274,6 @@ const isAndroid = (): boolean =>
   /Android/i.test(navigator.userAgent || '');
 
 // Envía a RawBT usando el esquema rawbt:base64,<payload>
-// Si no es Android, opcionalmente puedes hacer fallback a window.print()
 const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
   if (!isAndroid()) {
     throw new Error('Esta impresión directa requiere Android con RawBT instalado.');
@@ -164,13 +283,10 @@ const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
   const base64 = bytesToBase64(escposBytes);
   const url = `rawbt:base64,${base64}`;
 
-  // Múltiples estrategias para invocar el esquema
   try {
     window.location.href = url;
     return;
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
 
   try {
     const a = document.createElement('a');
@@ -180,9 +296,7 @@ const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
     a.click();
     document.body.removeChild(a);
     return;
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
 
   throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio de impresión activo.');
 };
@@ -314,25 +428,9 @@ const Admin: React.FC = () => {
     }
   };
 
-  const parseDetails = (raw: string) => {
-    return raw
-      .split(';')
-      .filter(item => item.trim())
-      .map(item => {
-        const parts = item.trim().split(',');
-        if (parts.length >= 3) {
-          const quantity = parts[0].replace('-', '').trim();
-          const name = parts[1].trim();
-          const priceNum = parseInt(parts[2].replace(/[^0-9]/g, ''), 10) || 0;
-          return { quantity, name, priceNum };
-        }
-        return { quantity: '', name: item.trim(), priceNum: 0 };
-      });
-  };
-
   // ====== IMPRESIÓN DIRECTA: RawBT en Android (sin preview) ======
   const printOrder = async (order: Order) => {
-    const customerName = order.nombre || 'Cliente';
+    const customerName = sanitizeForTicket(order.nombre || 'Cliente');
     const customerPhone = cleanPhone(order.numero);
     const items = parseDetails(order["detalle pedido"]);
     const subtotal = order.valor_restaurante || 0;
@@ -347,17 +445,17 @@ const Admin: React.FC = () => {
     lines.push(repeat('=', COLS));
 
     lines.push(padRight(`PEDIDO #${order.row_number}`, COLS));
-    lines.push(...wrapLabelValue('Fecha', order.fecha || ''));
+    lines.push(...wrapLabelValue('Fecha', sanitizeForTicket(order.fecha || '')));
     lines.push(...wrapLabelValue('Cliente', customerName));
     lines.push(...wrapLabelValue('Teléfono', customerPhone));
-    lines.push(...wrapLabelValue('Dirección', order.direccion || ''));
+    lines.push(...wrapLabelValue('Dirección', sanitizeForTicket(order.direccion || '')));
 
     lines.push(repeat('-', COLS));
     lines.push(center('DETALLE DEL PEDIDO'));
     lines.push(repeat('-', COLS));
 
     items.forEach(({ quantity, name, priceNum }) => {
-      const block = formatItemBlock(quantity || '1', name, priceNum);
+      const block = formatItemBlock(quantity || '1', sanitizeForTicket(name), priceNum);
       block.forEach(l => lines.push(l));
     });
 
@@ -366,8 +464,8 @@ const Admin: React.FC = () => {
     lines.push(totalLine('Domicilio', domicilio));
     lines.push(totalLine('TOTAL', total));
     lines.push('');
-    lines.push(...wrapLabelValue('Método de pago', order.metodo_pago || ''));
-    lines.push(...wrapLabelValue('Estado', order.estado || ''));
+    lines.push(...wrapLabelValue('Método de pago', sanitizeForTicket(order.metodo_pago || '')));
+    lines.push(...wrapLabelValue('Estado', sanitizeForTicket(order.estado || '')));
     lines.push(repeat('=', COLS));
     lines.push(center('¡Gracias por su compra!'));
     lines.push(repeat('=', COLS));
@@ -385,7 +483,7 @@ const Admin: React.FC = () => {
     // ====== Fallback (PC / no Android): ventana de impresión del navegador ======
     const html = `
       <div>
-        <pre>${lines.join(String.fromCharCode(10))}</pre>
+        <pre>${lines.map(l => l.replace(/</g, '&lt;').replace(/>/g, '&gt;')).join(String.fromCharCode(10))}</pre>
       </div>
     `;
     const printWindow = window.open('', '_blank', 'width=380,height=700');
