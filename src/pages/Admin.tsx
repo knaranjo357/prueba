@@ -108,6 +108,84 @@ const formatItemBlock = (qty: string, name: string, priceNum: number): string[] 
   return out;
 };
 
+/* =========================
+   ESC/POS + RawBT Helpers
+   ========================= */
+
+// Convierte string (UTF-8) a bytes
+const utf8ToBytes = (str: string): number[] => {
+  const encoder = new TextEncoder(); // soporta acentos/ñ
+  return Array.from(encoder.encode(str));
+};
+
+// Base64 seguro para binario
+const bytesToBase64 = (bytes: number[]): string => {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  // btoa espera Latin1; como ya es binario, sirve
+  return btoa(binary);
+};
+
+// Construye payload ESC/POS a partir de líneas de texto monoespaciado
+const buildEscposFromLines = (lines: string[]): number[] => {
+  const bytes: number[] = [];
+
+  // Init
+  bytes.push(0x1B, 0x40); // ESC @
+
+  // Alineación izquierda por defecto
+  bytes.push(0x1B, 0x61, 0x00); // ESC a 0
+
+  // Texto + saltos de línea
+  const body = lines.join('\n') + '\n';
+  bytes.push(...utf8ToBytes(body));
+
+  // Feed extra antes de corte
+  bytes.push(0x0A, 0x0A, 0x0A);
+
+  // Corte completo (GS V 0)
+  bytes.push(0x1D, 0x56, 0x00);
+
+  return bytes;
+};
+
+// Detecta si es Android (para lanzar esquema rawbt)
+const isAndroid = (): boolean =>
+  /Android/i.test(navigator.userAgent || '');
+
+// Envía a RawBT usando el esquema rawbt:base64,<payload>
+// Si no es Android, opcionalmente puedes hacer fallback a window.print()
+const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
+  if (!isAndroid()) {
+    throw new Error('Esta impresión directa requiere Android con RawBT instalado.');
+  }
+
+  const escposBytes = buildEscposFromLines(ticketLines);
+  const base64 = bytesToBase64(escposBytes);
+  const url = `rawbt:base64,${base64}`;
+
+  // Múltiples estrategias para invocar el esquema
+  try {
+    window.location.href = url;
+    return;
+  } catch {
+    // ignore
+  }
+
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  } catch {
+    // ignore
+  }
+
+  throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio de impresión activo.');
+};
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -252,82 +330,91 @@ const Admin: React.FC = () => {
       });
   };
 
+  // ====== IMPRESIÓN DIRECTA: RawBT en Android (sin preview) ======
   const printOrder = async (order: Order) => {
-  const customerName = order.nombre || 'Cliente';
-  const customerPhone = cleanPhone(order.numero);
-  const items = parseDetails(order["detalle pedido"]);
-  const subtotal = order.valor_restaurante || 0;
-  const domicilio = order.valor_domicilio || 0;
-  const total = subtotal + domicilio;
+    const customerName = order.nombre || 'Cliente';
+    const customerPhone = cleanPhone(order.numero);
+    const items = parseDetails(order["detalle pedido"]);
+    const subtotal = order.valor_restaurante || 0;
+    const domicilio = order.valor_domicilio || 0;
+    const total = subtotal + domicilio;
 
-  const lines: string[] = [];
-  lines.push(repeat('=', COLS));
-  lines.push(center('LUIS RES'));
-  lines.push(center('Cra 37 #109-24'));
-  lines.push(center('Floridablanca - Caldas'));
-  lines.push(repeat('=', COLS));
+    const lines: string[] = [];
+    lines.push(repeat('=', COLS));
+    lines.push(center('LUIS RES'));
+    lines.push(center('Cra 37 #109-24'));
+    lines.push(center('Floridablanca - Caldas'));
+    lines.push(repeat('=', COLS));
 
-  lines.push(padRight(`PEDIDO #${order.row_number}`, COLS));
-  lines.push(...wrapLabelValue('Fecha', order.fecha || ''));
-  lines.push(...wrapLabelValue('Cliente', customerName));
-  lines.push(...wrapLabelValue('Teléfono', customerPhone));
-  lines.push(...wrapLabelValue('Dirección', order.direccion || ''));
+    lines.push(padRight(`PEDIDO #${order.row_number}`, COLS));
+    lines.push(...wrapLabelValue('Fecha', order.fecha || ''));
+    lines.push(...wrapLabelValue('Cliente', customerName));
+    lines.push(...wrapLabelValue('Teléfono', customerPhone));
+    lines.push(...wrapLabelValue('Dirección', order.direccion || ''));
 
-  lines.push(repeat('-', COLS));
-  lines.push(center('DETALLE DEL PEDIDO'));
-  lines.push(repeat('-', COLS));
+    lines.push(repeat('-', COLS));
+    lines.push(center('DETALLE DEL PEDIDO'));
+    lines.push(repeat('-', COLS));
 
-  items.forEach(({ quantity, name, priceNum }) => {
-    const block = formatItemBlock(quantity || '1', name, priceNum);
-    block.forEach(l => lines.push(l));
-  });
+    items.forEach(({ quantity, name, priceNum }) => {
+      const block = formatItemBlock(quantity || '1', name, priceNum);
+      block.forEach(l => lines.push(l));
+    });
 
-  lines.push(repeat('-', COLS));
-  lines.push(totalLine('Subtotal', subtotal));
-  lines.push(totalLine('Domicilio', domicilio));
-  lines.push(totalLine('TOTAL', total));
-  lines.push('');
-  lines.push(...wrapLabelValue('Método de pago', order.metodo_pago || ''));
-  lines.push(...wrapLabelValue('Estado', order.estado || ''));
-  lines.push(repeat('=', COLS));
-  lines.push(center('¡Gracias por su compra!'));
-  lines.push(repeat('=', COLS));
+    lines.push(repeat('-', COLS));
+    lines.push(totalLine('Subtotal', subtotal));
+    lines.push(totalLine('Domicilio', domicilio));
+    lines.push(totalLine('TOTAL', total));
+    lines.push('');
+    lines.push(...wrapLabelValue('Método de pago', order.metodo_pago || ''));
+    lines.push(...wrapLabelValue('Estado', order.estado || ''));
+    lines.push(repeat('=', COLS));
+    lines.push(center('¡Gracias por su compra!'));
+    lines.push(repeat('=', COLS));
 
-  // HTML simple sin link extra
-  const html = `
-    <div>
-      <pre>${lines.join(String.fromCharCode(10))}</pre>
-    </div>
-  `;
+    // → Android + RawBT: enviar sin preview
+    try {
+      await sendToRawBT(lines);
+      updateOrderStatus(order.row_number, 'impreso');
+      return;
+    } catch (err: any) {
+      // Si no es Android o RawBT no está disponible, hacemos fallback opcional
+      console.warn('RawBT directo no disponible, usando fallback de impresión de navegador:', err?.message);
+    }
 
-  const printWindow = window.open('', '_blank', 'width=380,height=700');
-  if (printWindow) {
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Factura #${order.row_number}</title>
-          <style>
-            @media print { @page { size: 80mm auto; margin: 0; } }
-            body { font-family: 'Courier New', monospace; font-size: 11px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.25; }
-            pre  { white-space: pre; margin: 0; font-size: 11px; }
-          </style>
-        </head>
-        <body>
-          ${html}
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 1000);
-            }
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    updateOrderStatus(order.row_number, 'impreso');
-  }
-};
-
+    // ====== Fallback (PC / no Android): ventana de impresión del navegador ======
+    const html = `
+      <div>
+        <pre>${lines.join(String.fromCharCode(10))}</pre>
+      </div>
+    `;
+    const printWindow = window.open('', '_blank', 'width=380,height=700');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Factura #${order.row_number}</title>
+            <style>
+              @media print { @page { size: 80mm auto; margin: 0; } }
+              body { font-family: 'Courier New', monospace; font-size: 11px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.25; }
+              pre  { white-space: pre; margin: 0; font-size: 11px; }
+            </style>
+          </head>
+          <body>
+            ${html}
+            <script>
+              window.onload = function() {
+                window.print();
+                setTimeout(function() { window.close(); }, 1000);
+              }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      updateOrderStatus(order.row_number, 'impreso');
+    }
+  };
 
   // Opciones dinámicas de filtros basadas en los datos actuales
   const statusOptions = useMemo(() => {
