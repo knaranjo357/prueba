@@ -3,7 +3,7 @@ import { ShoppingBag, X, ArrowLeft, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../context/CartContext';
 import { formatPrice, calculateTotalPrice } from '../utils/dateUtils';
-import { CustomerInfo, CartItem } from '../types';
+import { CustomerInfo } from '../types';
 import CartContent from './CartContent';
 import SimplifiedCheckoutWizard from './SimplifiedCheckoutWizard';
 
@@ -20,17 +20,6 @@ const Cart: React.FC = () => {
     deliveryType: 'delivery'
   });
 
-  const handleWhatsAppOrder = () => {
-    const deliveryPrice = customerInfo.deliveryType === 'delivery' ? 5000 : 0;
-    const message = formatWhatsAppMessage(items, customerInfo, deliveryPrice);
-    window.open(
-      `https://wa.me/${restaurantConfig.celular}?text=${message}`,
-      '_blank'
-    );
-    setIsOpen(false);
-    setStep('cart');
-  };
-
   const resetCart = () => {
     setIsOpen(false);
     setStep('cart');
@@ -44,11 +33,8 @@ const Cart: React.FC = () => {
     });
   };
 
-  const handleSubmitOrder = async () => {
+  const handleSubmitOrder = async (deliveryPrice: number) => {
     try {
-      const deliveryPrice = customerInfo.deliveryType === 'delivery' ? 
-        (customerInfo.neighborhood ? 5000 : 0) : 0;
-      
       // Format order details like the API expects
       const detalleItems = items.map(item => {
         const itemPrice = item.valor + (item.isForTakeaway && item.precio_adicional_llevar ? item.precio_adicional_llevar : 0);
@@ -56,7 +42,16 @@ const Cart: React.FC = () => {
       }).join(';') + ';';
       
       const orderData = {
-        fecha: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        fecha: new Date().toLocaleString('es-CO', {
+          timeZone: 'America/Bogota',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }).replace(/(\d{2})\/(\d{2})\/(\d{4}), (\d{2}):(\d{2}):(\d{2})/, '$3-$2-$1 $4:$5:$6'),
         nombre: customerInfo.name,
         numero: `57${customerInfo.phone.replace(/\D/g, '')}@s.whatsapp.net`,
         direccion: customerInfo.deliveryType === 'delivery' ? customerInfo.address : 'Recoger en local',
@@ -64,7 +59,7 @@ const Cart: React.FC = () => {
         valor_restaurante: calculateTotalPrice(items),
         valor_domicilio: deliveryPrice,
         metodo_pago: customerInfo.paymentMethod,
-        estado: 'pidiendo'
+        estado: 'confirmado'
       };
 
       const response = await fetch('https://n8n.alliasoft.com/webhook/luis-res/hacer-pedido', {
@@ -187,7 +182,7 @@ const Cart: React.FC = () => {
                       customerInfo={customerInfo}
                       setCustomerInfo={setCustomerInfo}
                       onBack={() => setStep('cart')}
-                      onSubmit={handleWhatsAppOrder}
+                      onSubmit={handleSubmitOrder}
                     />
                   </motion.div>
                 )}
