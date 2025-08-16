@@ -11,7 +11,7 @@ interface SimplifiedCheckoutWizardProps {
   customerInfo: CustomerInfo;
   setCustomerInfo: (info: CustomerInfo) => void;
   onBack: () => void;
-  onSubmit: () => void;
+  onSubmit: (deliveryPrice: number) => void;
 }
 
 const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
@@ -470,7 +470,7 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
             <motion.button
               whileHover={isFormValid() ? { scale: 1.02 } : {}}
               whileTap={isFormValid() ? { scale: 0.98 } : {}}
-              onClick={onSubmit}
+              onClick={() => onSubmit(deliveryPrice)}
               disabled={!isFormValid()}
               className={`flex-1 flex items-center justify-center gap-3 py-3 px-6 rounded-xl font-bold transition-all ${
                 isFormValid()
