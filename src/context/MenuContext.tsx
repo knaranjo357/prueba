@@ -1,17 +1,14 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { fetchMenuItems } from '../api/menuApi';
-import { MenuItem, ServiceType } from '../types';
-import { getCurrentServiceType } from '../config/restaurantConfig';
+import { MenuItem } from '../types';
 
 interface MenuContextProps {
   menuItems: MenuItem[];
   loading: boolean;
   error: string | null;
   selectedCategory: string | null;
-  selectedService: ServiceType;
   categories: string[];
   setSelectedCategory: (category: string | null) => void;
-  setSelectedService: (service: ServiceType) => void;
   filteredItems: MenuItem[];
   retryLoading: () => void;
 }
@@ -23,49 +20,38 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedService, setSelectedService] = useState<ServiceType>('almuerzo');
   const [categories, setCategories] = useState<string[]>([]);
-
-  // Auto-detect current service based on time
-  useEffect(() => {
-    const updateService = () => {
-      const currentService = getCurrentServiceType();
-      setSelectedService(currentService);
-    };
-
-    updateService();
-    
-    // Update service every minute
-    const interval = setInterval(updateService, 60000);
-    
-    return () => clearInterval(interval);
-  }, []);
 
   const loadMenuItems = async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await fetchMenuItems();
-      
-      const validItems = data.filter(item => 
-        item.nombre && 
-        item.nombre.trim() !== '' &&
-        item.valor > 0
+
+      // Valida nombre y precio solamente
+      const validItems = data.filter(
+        (item: MenuItem) =>
+          item?.nombre &&
+          item.nombre.trim() !== '' &&
+          typeof item.valor === 'number' &&
+          item.valor > 0
       );
 
-      const sortedData = [...validItems].sort((a, b) => 
+      const sortedData = [...validItems].sort((a, b) =>
         a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' })
       );
-      
+
       setMenuItems(sortedData);
-      
+
+      // Construir categorías únicas
       const allCategories = sortedData
-        .flatMap(item => item.categorias)
-        .filter(cat => cat && typeof cat === 'string' && cat.trim() !== '')
-        .filter((cat, index, arr) => arr.indexOf(cat) === index); // Remove duplicates
-      const uniqueCategories = [...new Set(allCategories)]
-        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
-      
+        .flatMap(item => Array.isArray(item.categorias) ? item.categorias : [])
+        .filter(cat => typeof cat === 'string' && cat.trim() !== '');
+
+      const uniqueCategories = [...new Set(allCategories)].sort((a, b) =>
+        a.localeCompare(b, 'es', { sensitivity: 'base' })
+      );
+
       setCategories(uniqueCategories);
     } catch (error) {
       console.error('Error fetching menu items:', error);
@@ -79,24 +65,21 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadMenuItems();
   }, []);
 
+  // Filtra SOLO por categoría. NO filtra por servicio ni día.
   const filteredItems = React.useMemo(() => {
+    // Mostrar TODOS los items sin filtrar por servicio, día o cualquier otra condición
     return menuItems.filter(item => {
-      if (!item.nombre || !item.servicios) {
-        return false;
-      }
+      // Solo validar que el item tenga datos básicos válidos
+      if (!item?.nombre || !item.nombre.trim()) return false;
+      if (typeof item.valor !== 'number' || item.valor <= 0) return false;
 
-      const categoryMatch = selectedCategory ? 
-        (item.categorias && item.categorias.includes(selectedCategory)) : true;
-      
-      const serviceMatch = Array.isArray(item.servicios) ? item.servicios.includes(selectedService) : true;
-      
-      const currentDay = new Date().getDay() || 7;
-      const dayMatch = item.dias && Array.isArray(item.dias) ? 
-        item.dias.includes(currentDay) : true;
-      
-      return categoryMatch && serviceMatch && dayMatch;
+      const categoryMatch = selectedCategory
+        ? Array.isArray(item.categorias) && item.categorias.includes(selectedCategory)
+        : true;
+
+      return categoryMatch;
     });
-  }, [menuItems, selectedCategory, selectedService]);
+  }, [menuItems, selectedCategory]);
 
   const retryLoading = () => {
     loadMenuItems();
@@ -109,10 +92,8 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loading,
         error,
         selectedCategory,
-        selectedService,
         categories,
         setSelectedCategory,
-        setSelectedService,
         filteredItems,
         retryLoading,
       }}
