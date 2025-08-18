@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
+import {
   Settings,
   Printer,
   RefreshCw,
   LogOut,
   Menu as MenuIcon,
   ShoppingBag,
-  ArrowUpDown
+  ArrowUpDown,
+  Search,
+  X as XIcon,
 } from 'lucide-react';
 import { fetchMenuItems } from '../api/menuApi';
 import { MenuItem } from '../types';
@@ -18,7 +20,7 @@ interface Order {
   nombre?: string;
   numero: string;
   direccion: string;
-  "detalle pedido": string; // <- llave con espacio según tu API
+  "detalle pedido": string;
   valor_restaurante: number;
   valor_domicilio: number;
   metodo_pago: string;
@@ -29,6 +31,29 @@ type MenuItemWithRow = MenuItem & { row_number?: number };
 
 const ORDERS_API = 'https://n8n.alliasoft.com/webhook/luis-res/pedidos';
 const MENU_API = 'https://n8n.alliasoft.com/webhook/luis-res/menu';
+
+/** ======================
+ *  VARIABLES DE COLUMNA
+ *  Cambia estos 3 valores y listo.
+ *  ====================== */
+const GRID_COLS_MOBILE = 1;   // columnas en móviles
+const GRID_COLS_MD = 2;       // columnas en tablets
+const GRID_COLS_DESKTOP = 4;  // columnas en PC/desktop
+
+// Mapa para generar clases Tailwind de forma segura (quedan "vistos" por el JIT)
+const GRID_MAP: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-4',
+  5: 'grid-cols-5',
+  6: 'grid-cols-6',
+};
+
+const gridColsClass =
+  `${GRID_MAP[GRID_COLS_MOBILE] || 'grid-cols-1'} ` +
+  `md:${GRID_MAP[GRID_COLS_MD] || 'grid-cols-2'} ` +
+  `lg:${GRID_MAP[GRID_COLS_DESKTOP] || 'grid-cols-4'}`;
 
 /// ===== Helpers para impresión POS 80 =====
 const COLS = 42; // ancho típico (80mm)
@@ -43,7 +68,6 @@ const center   = (s: string) => {
 const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
 const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
 
-// Normaliza texto para el ticket (quita espacios raros/zero-width)
 const sanitizeForTicket = (s: string): string =>
   (s || '')
     .replace(/\r\n/g, '\n')
@@ -53,7 +77,6 @@ const sanitizeForTicket = (s: string): string =>
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .trim();
 
-// Envuelve texto a un ancho fijo, respetando palabras; parte palabras muy largas.
 const wrapText = (text: string, width: number): string[] => {
   if (width <= 0) return [text];
   const rawTokens = text.trim().split(/\s+/).filter(Boolean);
@@ -75,7 +98,6 @@ const wrapText = (text: string, width: number): string[] => {
   return lines.length ? lines : [''];
 };
 
-// Campo "Etiqueta: valor" con wrap e indentación del valor
 const wrapLabelValue = (label: string, value: string): string[] => {
   const prefix = `${label}: `;
   const valueWidth = Math.max(0, COLS - prefix.length);
@@ -88,29 +110,25 @@ const wrapLabelValue = (label: string, value: string): string[] => {
   return out;
 };
 
-// Línea "Etiqueta .... $valor" con el monto alineado a la derecha
 const totalLine = (label: string, amount: number): string => {
   const right = money(amount);
-  const leftWidth = COLS - right.length - 1; // 1 espacio separador
+  const leftWidth = COLS - right.length - 1;
   return padRight(label, leftWidth) + ' ' + right;
 };
 
-// Ítem con precio a la derecha y nombre envuelto a la izquierda
 const formatItemBlock = (qty: string, name: string, priceNum: number): string[] => {
   const price = money(priceNum);
   const qtyLabel = qty ? `${qty} ` : '';
-  const rightWidth = price.length + 1; // espacio + precio
+  const rightWidth = price.length + 1;
   const leftWidth = COLS - rightWidth;
 
   const leftText = (qtyLabel + (name || '')).trim();
   const leftLines = wrapText(leftText, leftWidth);
 
   const out: string[] = [];
-  // Primera línea con precio a la derecha
   const firstLeft = padRight(leftLines[0] || '', leftWidth);
   out.push(firstLeft + ' ' + price);
 
-  // Siguientes líneas sin precio, alineadas bajo el nombre (se indenta el espacio del qty)
   const indent = repeat(' ', qtyLabel.length || 0);
   for (let i = 1; i < leftLines.length; i++) {
     out.push(padRight(indent + leftLines[i], COLS));
@@ -121,8 +139,6 @@ const formatItemBlock = (qty: string, name: string, priceNum: number): string[] 
 /* =========================
    Parser robusto de detalle
    ========================= */
-
-// Divide usando separadores (p. ej. ; o |) ignorando los que estén dentro de paréntesis.
 const splitOutsideParens = (s: string, separators = [';']): string[] => {
   const sepSet = new Set(separators);
   const out: string[] = [];
@@ -153,21 +169,13 @@ const parseMoneyToInt = (s: string): number => {
   return isNaN(n) ? 0 : n;
 };
 
-// NUEVA versión robusta para "detalle pedido"
 const parseDetails = (raw: string) => {
   if (!raw) return [];
-  // Separamos ítems por ; o | (fuera de paréntesis)
   const itemStrings = splitOutsideParens(raw, [';', '|']).map(x => x.trim()).filter(Boolean);
 
   return itemStrings.map(itemStr => {
-    // Partimos por coma FUERA de paréntesis
     const parts = splitByCommaOutsideParens(itemStr).map(x => x.trim());
 
-    // Formatos soportados:
-    // a) "2, Hamburguesa (doble, sin cebolla), $15000"
-    // b) "-2, Perro, 12.000"
-    // c) "Hamburguesa sencilla, 15000" (qty=1)
-    // d) "Producto suelto"
     let quantity = '';
     let name = '';
     let priceNum = 0;
@@ -186,7 +194,6 @@ const parseDetails = (raw: string) => {
       priceNum = 0;
     }
 
-    // Normaliza cantidad
     const qMatch = quantity.match(/-?\d+/);
     if (qMatch) quantity = String(Math.abs(parseInt(qMatch[0], 10)));
     else quantity = '1';
@@ -198,15 +205,12 @@ const parseDetails = (raw: string) => {
 /* =========================
    ESC/POS + RawBT Helpers
    ========================= */
-
-// Base64 seguro para binario
 const bytesToBase64 = (bytes: number[]): string => {
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 };
 
-// Mapeo básico Unicode → CP1252 (Windows-1252) para español.
 const cp1252Map: Record<string, number> = {
   'Á': 0xC1, 'É': 0xC9, 'Í': 0xCD, 'Ó': 0xD3, 'Ú': 0xDA, 'Ü': 0xDC, 'Ñ': 0xD1,
   'á': 0xE1, 'é': 0xE9, 'í': 0xED, 'ó': 0xF3, 'ú': 0xFA, 'ü': 0xFC, 'ñ': 0xF1,
@@ -218,7 +222,6 @@ const asciiFallback: Record<string, string> = {
   '“':'"', '”':'"', '‘':"'", '’':"'", '—':'-', '–':'-', '…':'...', '€':'EUR'
 };
 
-// Convierte string JS a bytes CP1252, con degradación segura si hace falta.
 const encodeCP1252 = (str: string): number[] => {
   const bytes: number[] = [];
   for (const ch of str) {
@@ -226,67 +229,47 @@ const encodeCP1252 = (str: string): number[] => {
     if (code <= 0x7F) { bytes.push(code); continue; }
     if (cp1252Map[ch] !== undefined) { bytes.push(cp1252Map[ch]); continue; }
 
-    // Normaliza diacríticos (á -> a) si no hay mapeo
     const basic = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (basic.length === 1 && basic.charCodeAt(0) <= 0x7F) {
       bytes.push(basic.charCodeAt(0));
       continue;
     }
-    // Fallback por símbolo tipográfico
     if (asciiFallback[ch]) {
       for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0));
       continue;
     }
-    // Último recurso
     bytes.push(0x3F); // '?'
   }
   return bytes;
 };
 
-// Construye payload ESC/POS a partir de líneas de texto monoespaciado (CP1252)
 const buildEscposFromLines = (lines: string[]): number[] => {
   const bytes: number[] = [];
-
-  // Init
   bytes.push(0x1B, 0x40); // ESC @
-
-  // Selección de página de códigos: Windows-1252 (n = 16) => ESC t n
-  bytes.push(0x1B, 0x74, 0x10);
-
-  // Alineación izquierda por defecto
-  bytes.push(0x1B, 0x61, 0x00); // ESC a 0
-
-  // Texto + saltos de línea
+  bytes.push(0x1B, 0x74, 0x10); // CP1252
+  bytes.push(0x1B, 0x61, 0x00); // left
   const body = lines.join('\n') + '\n';
   bytes.push(...encodeCP1252(body));
-
-  // Feed extra antes de corte
   bytes.push(0x0A, 0x0A, 0x0A);
-
-  // Corte completo (GS V 0)
-  bytes.push(0x1D, 0x56, 0x00);
-
+  bytes.push(0x1D, 0x56, 0x00); // cut
   return bytes;
 };
 
-// Detecta si es Android (para lanzar esquema rawbt)
 const isAndroid = (): boolean =>
   /Android/i.test(navigator.userAgent || '');
 
-// Envía a RawBT usando el esquema rawbt:base64,<payload>
 const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
   if (!isAndroid()) {
     throw new Error('Esta impresión directa requiere Android con RawBT instalado.');
   }
-
   const escposBytes = buildEscposFromLines(ticketLines);
   const base64 = bytesToBase64(escposBytes);
   const url = `rawbt:base64,${base64}`;
 
   try {
-    window.location.href = url;
+    (window as any).location.href = url;
     return;
-  } catch { /* ignore */ }
+  } catch {}
 
   try {
     const a = document.createElement('a');
@@ -296,36 +279,63 @@ const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
     a.click();
     document.body.removeChild(a);
     return;
-  } catch { /* ignore */ }
+  } catch {}
 
   throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio de impresión activo.');
 };
+
+/* =========================
+   UI / Estado
+   ========================= */
+
+const allowedStatuses = [
+  'pidiendo',
+  'confirmado',
+  'impreso',
+  'preparando',
+  'en camino',
+  'entregado',
+] as const;
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'menu' | 'orders'>('menu');
+
   const [menuItems, setMenuItems] = useState<MenuItemWithRow[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Filtros/orden para Pedidos
   const [filterStatus, setFilterStatus] = useState<string>('todos');
   const [filterPayment, setFilterPayment] = useState<string>('todos');
   const [sortBy, setSortBy] = useState<'fecha' | 'row_number'>('fecha');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // UI Menu: búsqueda y categoría
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
 
   // Mantener sesión si ya inició previamente
   useEffect(() => {
     const saved = localStorage.getItem('admin_auth');
     if (saved === '1') {
       setIsAuthenticated(true);
-      loadMenuItems();
-      fetchOrders();
     }
   }, []);
 
-  // Auto refresh orders every 20 seconds
+  // GET automático al cambiar de tab (requerimiento)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (activeTab === 'menu') {
+      forceFetchMenuItems();
+    } else {
+      fetchOrders();
+    }
+  }, [activeTab, isAuthenticated]);
+
+  // Auto refresh orders every 20 seconds (se mantiene)
   useEffect(() => {
     if (isAuthenticated && activeTab === 'orders') {
       const interval = setInterval(fetchOrders, 20000);
@@ -338,8 +348,6 @@ const Admin: React.FC = () => {
     if (email === 'alfredo@luisres.com' && password === 'luisres') {
       setIsAuthenticated(true);
       localStorage.setItem('admin_auth', '1');
-      loadMenuItems();
-      fetchOrders();
     } else {
       alert('Credenciales incorrectas');
     }
@@ -352,19 +360,32 @@ const Admin: React.FC = () => {
     setPassword('');
   };
 
-  const loadMenuItems = async () => {
+  // GET directo (sin cache)
+  const forceFetchMenuItems = async () => {
     try {
       setLoading(true);
-      const items = await fetchMenuItems();
+      const res = await fetch(MENU_API);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const items = await res.json();
       setMenuItems(
         (items as MenuItemWithRow[]).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
       );
     } catch (error) {
-      console.error('Error loading menu items:', error);
+      console.error('Error fetching menu items:', error);
+      try {
+        const items = await fetchMenuItems();
+        setMenuItems(
+          (items as MenuItemWithRow[]).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        );
+      } catch (e) {
+        console.error('Fallback fetchMenuItems failed:', e);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const loadMenuItems = forceFetchMenuItems;
 
   const fetchOrders = async () => {
     try {
@@ -378,7 +399,7 @@ const Admin: React.FC = () => {
     }
   };
 
-  // --- MENU: toggle disponibilidad con POST ---
+  // --- MENU: toggle disponibilidad con POST
   const postAvailability = async (payload: { row_number: number | null; id: number | string; disponible: boolean }) => {
     const res = await fetch(MENU_API, {
       method: 'POST',
@@ -395,40 +416,49 @@ const Admin: React.FC = () => {
       disponible: nuevoValor,
     };
 
-    // Optimista: aplica cambio y revierte si falla
     setMenuItems(prev => prev.map(i => (i.id === item.id ? { ...i, disponible: nuevoValor } : i)));
     try {
       await postAvailability(payload);
     } catch (err) {
       console.error(err);
-      // revertir
       setMenuItems(prev => prev.map(i => (i.id === item.id ? { ...i, disponible: !nuevoValor } : i)));
       alert('No se pudo guardar el cambio. Intenta de nuevo.');
     }
   };
 
-  const updateOrderStatus = async (orderNumber: number, newStatus: string) => {
-    try {
-      const response = await fetch(ORDERS_API, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          row_number: orderNumber,
-          estado: newStatus,
-        }),
-      });
+  // --- PEDIDOS: POST estado { numero, estado }
+  const postOrderStatus = async (numeroRaw: string, newStatus: string) => {
+    const response = await fetch(ORDERS_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        numero: numeroRaw,
+        estado: newStatus,
+      }),
+    });
+    if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
+  };
 
-      if (response.ok) {
-        setOrders(prev => prev.map(order => (order.row_number === orderNumber ? { ...order, estado: newStatus } : order)));
-      }
+  const updateOrderEstado = async (order: Order, newStatus: string) => {
+    const numeroRaw = order.numero;
+    const prevStatus = order.estado;
+
+    setOrders(prev =>
+      prev.map(o => (o.row_number === order.row_number ? { ...o, estado: newStatus } : o))
+    );
+
+    try {
+      await postOrderStatus(numeroRaw, newStatus);
     } catch (error) {
-      console.error('Error updating order:', error);
+      console.error('Error updating order status:', error);
+      setOrders(prev =>
+        prev.map(o => (o.row_number === order.row_number ? { ...o, estado: prevStatus } : o))
+      );
+      alert('No se pudo actualizar el estado. Intenta nuevamente.');
     }
   };
 
-  // ====== IMPRESIÓN DIRECTA: RawBT en Android (sin preview) ======
+  // ====== IMPRESIÓN DIRECTA: RawBT en Android ======
   const printOrder = async (order: Order) => {
     const customerName = sanitizeForTicket(order.nombre || 'Cliente');
     const customerPhone = cleanPhone(order.numero);
@@ -470,17 +500,17 @@ const Admin: React.FC = () => {
     lines.push(center('¡Gracias por su compra!'));
     lines.push(repeat('=', COLS));
 
-    // → Android + RawBT: enviar sin preview
     try {
       await sendToRawBT(lines);
-      updateOrderStatus(order.row_number, 'impreso');
+      await postOrderStatus(order.numero, 'impreso');
+      setOrders(prev =>
+        prev.map(o => (o.row_number === order.row_number ? { ...o, estado: 'impreso' } : o))
+      );
       return;
     } catch (err: any) {
-      // Si no es Android o RawBT no está disponible, hacemos fallback opcional
-      console.warn('RawBT directo no disponible, usando fallback de impresión de navegador:', err?.message);
+      console.warn('RawBT no disponible, fallback impresión navegador:', err?.message);
     }
 
-    // ====== Fallback (PC / no Android): ventana de impresión del navegador ======
     const html = `
       <div>
         <pre>${lines.map(l => l.replace(/</g, '&lt;').replace(/>/g, '&gt;')).join(String.fromCharCode(10))}</pre>
@@ -510,11 +540,19 @@ const Admin: React.FC = () => {
         </html>
       `);
       printWindow.document.close();
-      updateOrderStatus(order.row_number, 'impreso');
+
+      try {
+        await postOrderStatus(order.numero, 'impreso');
+        setOrders(prev =>
+          prev.map(o => (o.row_number === order.row_number ? { ...o, estado: 'impreso' } : o))
+        );
+      } catch (e) {
+        console.error('No se pudo marcar como impreso en fallback:', e);
+      }
     }
   };
 
-  // Opciones dinámicas de filtros basadas en los datos actuales
+  // Opciones dinámicas de filtros
   const statusOptions = useMemo(() => {
     const setVals = new Set<string>();
     orders.forEach(o => { if (o?.estado) setVals.add(o.estado); });
@@ -553,13 +591,12 @@ const Admin: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch ((status || '').toLowerCase()) {
-      case 'pendiente': return 'bg-yellow-100 text-yellow-800';
+      case 'pidiendo': return 'bg-yellow-100 text-yellow-800';
+      case 'confirmado': return 'bg-teal-100 text-teal-800';
+      case 'impreso': return 'bg-indigo-100 text-indigo-800';
       case 'preparando': return 'bg-blue-100 text-blue-800';
-      case 'listo': return 'bg-green-100 text-green-800';
       case 'en camino': return 'bg-purple-100 text-purple-800';
       case 'entregado': return 'bg-gray-100 text-gray-800';
-      case 'impreso': return 'bg-indigo-100 text-indigo-800';
-      case 'confirmado': return 'bg-teal-100 text-teal-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -571,16 +608,40 @@ const Admin: React.FC = () => {
     return 'bg-blue-100 text-blue-800';
   };
 
+  // ====== CATEGORÍAS y BÚSQUEDA (Menú) ======
+  const allCategories = useMemo(() => {
+    const set = new Set<string>();
+    menuItems.forEach((item) => {
+      (item.categorias || []).forEach((c: string) => set.add(c));
+    });
+    return ['Todas', ...Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))];
+  }, [menuItems]);
+
+  const visibleMenuItems = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return menuItems.filter((item) => {
+      const inCategory =
+        selectedCategory === 'Todas' ||
+        (item.categorias || []).includes(selectedCategory);
+      const inName =
+        term === '' ||
+        (item.nombre || '').toLowerCase().includes(term);
+      return inCategory && inName;
+    });
+  }, [menuItems, selectedCategory, searchTerm]);
+
+  const clearSearch = () => setSearchTerm('');
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full">
+        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full border border-gray-100">
           <div className="text-center mb-6">
             <Settings size={48} className="text-gold mx-auto mb-4" />
             <h1 className="text-2xl font-bold text-gray-900">Panel de Administración</h1>
             <p className="text-gray-600">Luis Res</p>
           </div>
-          
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -588,25 +649,25 @@ const Admin: React.FC = () => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gold/50"
+                className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold/40 focus:border-gold/40"
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gold/50"
+                className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold/40 focus:border-gold/40"
                 required
               />
             </div>
-            
+
             <button
               type="submit"
-              className="w-full bg-gold hover:bg-gold/90 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+              className="w-full bg-gold hover:bg-gold/90 text-white font-semibold py-3 px-4 rounded-lg transition-colors shadow-sm"
             >
               Iniciar Sesión
             </button>
@@ -617,26 +678,26 @@ const Admin: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-white/80 backdrop-blur border-b border-gray-100 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 min-w-0">
               <Settings className="text-gold" size={32} />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Panel de Administración</h1>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold text-gray-900 truncate">Panel de Administración</h1>
                 <p className="text-gray-600">Luis Res</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <div className="flex bg-gray-100 rounded-lg p-1">
+              <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                 <button
                   onClick={() => setActiveTab('menu')}
                   className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                    activeTab === 'menu' 
-                      ? 'bg-white text-gold shadow-sm' 
+                    activeTab === 'menu'
+                      ? 'bg-white text-gold shadow-sm border border-gray-200'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
@@ -646,8 +707,8 @@ const Admin: React.FC = () => {
                 <button
                   onClick={() => setActiveTab('orders')}
                   className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                    activeTab === 'orders' 
-                      ? 'bg-white text-gold shadow-sm' 
+                    activeTab === 'orders'
+                      ? 'bg-white text-gold shadow-sm border border-gray-200'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
@@ -655,10 +716,11 @@ const Admin: React.FC = () => {
                   Pedidos
                 </button>
               </div>
-              
+
               <button
                 onClick={handleLogout}
-                className="text-gray-600 hover:text-gray-900 p-2"
+                className="text-gray-600 hover:text-gray-900 p-2 rounded-md hover:bg-gray-100"
+                title="Cerrar sesión"
               >
                 <LogOut size={20} />
               </button>
@@ -669,127 +731,199 @@ const Admin: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {activeTab === 'menu' && (
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-gray-900">Gestión de Menú</h2>
-              <button
-                onClick={loadMenuItems}
-                className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2"
-              >
-                <RefreshCw size={16} />
-                Actualizar
-              </button>
-            </div>
+          <div className="flex gap-6">
+            {/* Sidebar categorías: FIXED en todas las pantallas, pegada a la izquierda */}
+            <aside className="fixed top-24 left-0 z-20 w-28 sm:w-40 lg:w-64 h-[calc(100vh-6rem)] shrink-0">
+              <div className="h-full">
+                <div className="flex items-center justify-between mb-3 px-2">
+                  <h3 className="text-sm font-semibold text-gray-700">Categorías</h3>
+                </div>
 
-            <div className="grid gap-4">
-              {menuItems.map((item) => (
-                <div key={item.id as any} className="bg-white rounded-lg shadow-sm border p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-bold text-gray-900">{item.nombre}</h3>
-                      <p className="text-sm text-gray-600 mb-2">{item.descripcion}</p>
-                      <div className="flex items-center gap-2 mb-2">
+                {/* Buscador */}
+                <div className="relative mb-3 px-2">
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Buscar..."
+                    className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold/30 focus:border-gold/40 text-sm"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={clearSearch}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-100"
+                      title="Limpiar"
+                    >
+                      <XIcon size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Lista vertical UNA sola columna con scroll interno */}
+                <div className="rounded-xl border border-gray-200 bg-white p-2 max-h-[calc(100vh-180px)] overflow-y-auto mx-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    {allCategories.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`rounded-lg border text-xs md:text-sm px-2.5 py-2 transition shadow-sm hover:shadow ${
+                          selectedCategory === cat
+                            ? 'bg-gold text-white border-gold'
+                            : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
+                        }`}
+                        title={cat}
+                      >
+                        <span className="block truncate">{cat}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Botón actualizar menú */}
+                <div className="px-2">
+                  <button
+                    onClick={loadMenuItems}
+                    className="mt-3 w-full bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-sm"
+                    title="Actualizar menú"
+                  >
+                    <RefreshCw size={16} />
+                    Actualizar
+                  </button>
+                </div>
+              </div>
+            </aside>
+
+            {/* Contenido Menú (desplazado a la derecha del sidebar fijo) */}
+            <div className="flex-1 min-w-0 ml-28 sm:ml-40 lg:ml-64">
+              {/* Grid con columnas variables (mobile/md/desktop) */}
+              <div className={`grid ${gridColsClass} gap-4`}>
+                {visibleMenuItems.map((item) => (
+                  <div
+                    key={item.id as any}
+                    className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 mb-1 leading-tight break-words">
+                        {item.nombre}
+                      </h3>
+
+                      <div className="flex flex-wrap items-center gap-1.5 mb-2">
                         {item.categorias?.map((categoria: string) => (
                           <span
                             key={categoria}
-                            className="bg-gold/20 text-gold px-2 py-1 rounded-full text-xs font-medium"
+                            className="bg-gold/10 text-gold px-2 py-0.5 rounded-full text-[11px] font-medium border border-gold/20"
                           >
                             {categoria}
                           </span>
                         ))}
                       </div>
-                      <p className="font-bold text-gold">{formatPrice(item.valor)}</p>
                     </div>
-                    
-                    <div className="flex items-center gap-4">
-                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        item.disponible 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {item.disponible ? 'Disponible' : 'Agotado'}
-                      </div>
 
-                      {/* Switch ON/OFF */}
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={item.disponible}
-                        onClick={() => updateMenuItemAvailability(item, !item.disponible)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold/50 ${
-                          item.disponible ? 'bg-green-600' : 'bg-gray-300'
-                        }`}
-                        title={item.disponible ? 'Marcar como agotado' : 'Marcar como disponible'}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                            item.disponible ? 'translate-x-6' : 'translate-x-1'
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="font-bold text-gold text-lg tracking-tight">{formatPrice(item.valor)}</p>
+
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`px-2 py-0.5 rounded-full text-[12px] font-medium border ${
+                            item.disponible
+                              ? 'bg-green-50 text-green-700 border-green-200'
+                              : 'bg-red-50 text-red-700 border-red-200'
                           }`}
-                        />
-                      </button>
+                        >
+                          {item.disponible ? 'Disponible' : 'Agotado'}
+                        </div>
+
+                        {/* Switch ON/OFF */}
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={item.disponible}
+                          onClick={() => updateMenuItemAvailability(item, !item.disponible)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold/40 ${
+                            item.disponible ? 'bg-green-600' : 'bg-gray-300'
+                          }`}
+                          title={item.disponible ? 'Marcar como agotado' : 'Marcar como disponible'}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                              item.disponible ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+
+              {loading && (
+                <div className="text-sm text-gray-500 mt-4">Cargando menú…</div>
+              )}
             </div>
           </div>
         )}
 
         {activeTab === 'orders' && (
-          <div>
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-              <h2 className="text-xl font-bold text-gray-900">Gestión de Pedidos</h2>
-              <div className="flex flex-wrap items-center gap-3">
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  {statusOptions.map(opt => (
-                    <option key={opt} value={opt}>{opt === 'todos' ? 'Todos los estados' : opt}</option>
-                  ))}
-                </select>
-                
-                <select
-                  value={filterPayment}
-                  onChange={(e) => setFilterPayment(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  {paymentOptions.map(opt => (
-                    <option key={opt} value={opt}>{opt === 'todos' ? 'Todos los pagos' : opt}</option>
-                  ))}
-                </select>
+          <div className="min-w-0">
+            {/* Barra de filtros STICKY debajo del header (se desplaza y luego se pega naturalmente) */}
+            <div className="sticky top-24 z-20 bg-white/80 backdrop-blur border-b border-gray-100">
+              <div className="max-w-7xl mx-auto px-4 py-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <h2 className="text-xl font-bold text-gray-900">Gestión de Pedidos</h2>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
+                    >
+                      {statusOptions.map(opt => (
+                        <option key={opt} value={opt}>{opt === 'todos' ? 'Todos los estados' : opt}</option>
+                      ))}
+                    </select>
 
-                {/* Ordenamiento */}
-                <div className="flex items-center gap-2">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as 'fecha' | 'row_number')}
-                    className="border border-gray-300 rounded-lg px-3 py-2"
-                  >
-                    <option value="fecha">Ordenar por fecha</option>
-                    <option value="row_number">Ordenar por N° de pedido</option>
-                  </select>
-                  <button
-                    onClick={() => setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'))}
-                    className="border border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2"
-                    title={`Orden ${sortDir === 'asc' ? 'ascendente' : 'descendente'}`}
-                  >
-                    <ArrowUpDown size={16} />
-                    {sortDir === 'asc' ? 'Asc' : 'Desc'}
-                  </button>
+                    <select
+                      value={filterPayment}
+                      onChange={(e) => setFilterPayment(e.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
+                    >
+                      {paymentOptions.map(opt => (
+                        <option key={opt} value={opt}>{opt === 'todos' ? 'Todos los pagos' : opt}</option>
+                      ))}
+                    </select>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as 'fecha' | 'row_number')}
+                        className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
+                      >
+                        <option value="fecha">Ordenar por fecha</option>
+                        <option value="row_number">Ordenar por N° de pedido</option>
+                      </select>
+                      <button
+                        onClick={() => setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+                        className="border border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2 bg-white shadow-sm"
+                        title={`Orden ${sortDir === 'asc' ? 'ascendente' : 'descendente'}`}
+                      >
+                        <ArrowUpDown size={16} />
+                        {sortDir === 'asc' ? 'Asc' : 'Desc'}
+                      </button>
+
+                      <button
+                        onClick={fetchOrders}
+                        className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
+                      >
+                        <RefreshCw size={16} />
+                        Actualizar
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                
-                <button
-                  onClick={fetchOrders}
-                  className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2"
-                >
-                  <RefreshCw size={16} />
-                  Actualizar
-                </button>
               </div>
             </div>
 
+            {/* Contenido de pedidos: ya no necesita padding extra porque la barra es sticky */}
             <div className="grid gap-4">
               {filteredOrders.map((order) => {
                 const parsed = parseDetails(order["detalle pedido"]);
@@ -801,14 +935,14 @@ const Admin: React.FC = () => {
                   document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 };
                 return (
-                  <div key={order.row_number} id={anchorId} className="bg-white rounded-lg shadow-sm border p-4">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
+                  <div key={order.row_number} id={anchorId} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                    <div className="flex items-start justify-between mb-4 gap-3">
+                      <div className="min-w-0">
                         <h3 className="font-bold text-gray-900">Pedido #{order.row_number}</h3>
                         <p className="text-sm text-gray-600">{order.fecha}</p>
                       </div>
-                      
-                      <div className="flex items-center gap-2">
+
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.estado)}`}>
                           {order.estado}
                         </span>
@@ -817,19 +951,19 @@ const Admin: React.FC = () => {
                         </span>
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <p className="font-medium text-gray-900">{order.nombre}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 break-words">{order.nombre}</p>
                         <p className="text-sm">
-                          <a href={`#${anchorId}`} onClick={goToAnchor} className="text-blue-600 hover:underline">{phone}</a>
+                          <a href={`#${anchorId}`} onClick={goToAnchor} className="text-blue-600 hover:underline break-words">{phone}</a>
                         </p>
-                        <p className="text-sm text-gray-600">{order.direccion}</p>
+                        <p className="text-sm text-gray-600 break-words">{order.direccion}</p>
                       </div>
-                      
+
                       <div>
                         <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
-                        <div className="bg-gray-50 p-3 rounded-lg text-sm">
+                        <div className="bg-gray-50 p-3 rounded-lg text-sm border border-gray-200">
                           <ul className="list-disc pl-4">
                             {parsed.map(({ quantity, name, priceNum }, index) => (
                               <li key={index}>{`${quantity} ${name} - $${priceNum.toLocaleString()}`}</li>
@@ -838,8 +972,8 @@ const Admin: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center justify-between">
+
+                    <div className="flex items-center justify-between flex-wrap gap-3">
                       <div className="flex items-center gap-4 flex-wrap">
                         <span className="font-bold text-gray-900">
                           TOTAL: ${total.toLocaleString()}
@@ -853,28 +987,24 @@ const Admin: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => printOrder(order)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2"
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
                         >
                           <Printer size={16} />
                           Imprimir
                         </button>
-                        
+
                         <select
                           value={order.estado}
-                          onChange={(e) => updateOrderStatus(order.row_number, e.target.value)}
-                          className="border border-gray-300 rounded-lg px-3 py-2"
+                          onChange={(e) => updateOrderEstado(order, e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
                         >
-                          <option value="pendiente">Pendiente</option>
-                          <option value="preparando">Preparando</option>
-                          <option value="listo">Listo</option>
-                          <option value="en camino">En camino</option>
-                          <option value="entregado">Entregado</option>
-                          <option value="impreso">Impreso</option>
-                          <option value="confirmado">Confirmado</option>
+                          {allowedStatuses.map(st => (
+                            <option key={st} value={st}>{st}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
