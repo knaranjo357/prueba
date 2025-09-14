@@ -461,13 +461,43 @@ const OrdersTab: React.FC = () => {
       console.warn('RawBT no disponible, fallback impresión navegador:', err?.message);
     }
 
-    // ===== Fallback navegador (usa tamaños en px configurables) =====
+    // ===== Fallback navegador (usa grid para alinear precios a la derecha) =====
     const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    const itemsHtml = items.map(({ quantity, name, priceNum }) => `
+      <div class="item-row">
+        <div class="qty">${esc(quantity || '1')}</div>
+        <div class="name">${esc(sanitizeForTicket(name))}</div>
+        <div class="price">${esc(money(priceNum))}</div>
+      </div>
+    `).join('');
+
+    const totalsHtml = `
+      <div class="total-line"><span>Subtotal</span><span>${esc(money(subtotal))}</span></div>
+      <div class="total-line"><span>Domicilio</span><span>${esc(money(domicilio))}</span></div>
+      <div class="total-line total-strong"><span>TOTAL</span><span>${esc(money(total))}</span></div>
+    `;
+
     const html = `
       <div class="ticket">
         <pre class="block-general">${before.map(esc).join('\n')}</pre>
-        <pre class="block-detalle">${detail.map(esc).join('\n')}</pre>
-        <pre class="block-general">${after.map(esc).join('\n')}</pre>
+
+        <div class="detalle">
+          <div class="section-title">DETALLE DEL PEDIDO</div>
+          <div class="items">${itemsHtml}</div>
+          <div class="divider"></div>
+        </div>
+
+        <div class="resumen">
+          ${totalsHtml}
+          <div class="kv"><span class="k">Método de pago:</span><span class="v">${esc(sanitizeForTicket(order.metodo_pago || ''))}</span></div>
+          <div class="kv"><span class="k">Estado:</span><span class="v">${esc(sanitizeForTicket(order.estado || ''))}</span></div>
+          <pre class="block-general">${[
+            repeat('=', COLS),
+            center('¡Gracias por su compra!'),
+            repeat('=', COLS),
+          ].map(esc).join('\n')}</pre>
+        </div>
       </div>
     `;
 
@@ -479,18 +509,57 @@ const OrdersTab: React.FC = () => {
             <title>Factura #${order.row_number}</title>
             <style>
               :root {
-                --ticket-font: ${TICKET_FONT_PX}px;
-                --detail-font: ${DETAILS_FONT_PX}px;
+                --ticket-font: ${TICKET_FONT_PX}px;   /* tamaño general */
+                --detail-font: ${DETAILS_FONT_PX}px; /* tamaño para items */
               }
               @media print { @page { size: 80mm auto; margin: 0; } }
+              * { box-sizing: border-box; }
               body {
+                margin: 0;
                 font-family: "Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-                width: 72mm; margin: 0; padding: 2mm; line-height: 1.35;
-                font-variant-numeric: tabular-nums; /* ✔ dígitos con ancho fijo */
+                font-variant-numeric: tabular-nums;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
               }
-              pre  { white-space: pre; margin: 0; }
-              .block-general { font-size: var(--ticket-font); }
-              .block-detalle { font-size: var(--detail-font); }
+              .ticket {
+                width: 72mm;               /* ancho útil en rollo 80mm */
+                padding: 2mm;
+                margin: 0;
+              }
+              pre { white-space: pre-wrap; margin: 0; }
+              .block-general { font-size: var(--ticket-font); line-height: 1.35; }
+              .section-title { text-align: center; font-size: var(--detail-font); margin: 2mm 0 1mm; }
+              .divider { border-top: 1px solid #000; margin: 1mm 0; }
+
+              /* === Items: qty | nombre (envuelve) | precio (derecha) === */
+              .items { display: grid; row-gap: 1mm; font-size: var(--detail-font); line-height: 1.35; }
+              .item-row {
+                display: grid;
+                grid-template-columns: auto 1fr min-content;
+                column-gap: 2mm;
+                align-items: start;
+              }
+              .qty { white-space: nowrap; }
+              .name { overflow-wrap: anywhere; word-break: break-word; }
+              .price { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+              /* === Totales: etiqueta | valor (derecha fijo) === */
+              .resumen { margin-top: 2mm; }
+              .total-line {
+                display: grid;
+                grid-template-columns: 1fr min-content;
+                column-gap: 2mm;
+                align-items: baseline;
+                font-size: var(--ticket-font);
+                line-height: 1.35;
+              }
+              .total-line span:last-child { text-align: right; white-space: nowrap; }
+              .total-strong { font-weight: 700; }
+
+              /* Etiquetas varias (pago/estado) */
+              .kv { display: grid; grid-template-columns: auto 1fr; column-gap: 1mm; margin: 1mm 0; font-size: var(--ticket-font); }
+              .kv .k { white-space: nowrap; }
+              .kv .v { overflow-wrap: anywhere; }
             </style>
           </head>
           <body>
@@ -498,7 +567,7 @@ const OrdersTab: React.FC = () => {
             <script>
               window.onload = function() {
                 window.print();
-                setTimeout(function() { window.close(); }, 1000);
+                setTimeout(function() { window.close(); }, 600);
               }
             </script>
           </body>
@@ -680,6 +749,7 @@ const OrdersTab: React.FC = () => {
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline break-words"
                           title="Abrir chat de WhatsApp"
+                          onClick={goToAnchor}
                         >
                           {phone}
                         </a>
