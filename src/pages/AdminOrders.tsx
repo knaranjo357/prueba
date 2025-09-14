@@ -37,7 +37,10 @@ const center = (s: string) => {
   const left = Math.floor((COLS - len) / 2);
   return repeat(' ', Math.max(0, left)) + s.slice(0, COLS);
 };
-const money = (n: number) => `$${(n || 0).toLocaleString()}`;
+
+/** ✔ Moneda fija en es-CO para evitar caracteres no monoespaciados */
+const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
+
 const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
 
 const sanitizeForTicket = (s: string): string =>
@@ -143,10 +146,11 @@ const parseDetails = (raw: string) => {
   });
 };
 
+/** ✔ Mantiene el precio estrictamente en la última columna (alineado a derecha) */
 const formatItemBlock = (qty: string, name: string, priceNum: number): string[] => {
   const price = money(priceNum);
   const qtyLabel = qty ? `${qty} ` : '';
-  const rightWidth = price.length + 1;
+  const rightWidth = price.length + 1; // 1 espacio separador
   const leftWidth = COLS - rightWidth;
   const leftText = (qtyLabel + (name || '')).trim();
   const leftLines = wrapText(leftText, leftWidth);
@@ -188,16 +192,13 @@ const encodeCP1252 = (str: string): number[] => {
   return bytes;
 };
 
-/** ===== Tamaños de letra (CONFIGURABLES) =====
- * Ticket (fallback navegador): px
- * ESC/POS (RawBT): multiplicadores (1–8). Usamos solo altura para no perder columnas.
- */
-const TICKET_FONT_PX = 20;      // tamaño general del ticket (fallback navegador)
-const DETAILS_FONT_PX = 22;     // tamaño para "Detalle del pedido" (un poco mayor)
+/** ===== Tamaños de letra (CONFIGURABLES) ===== */
+const TICKET_FONT_PX = 20;
+const DETAILS_FONT_PX = 22;
 
 /** ESC/POS — multiplicadores de altura (no tocamos el ancho para conservar COLS) */
-const GENERAL_HEIGHT_MULT = 2;  // cuerpo general: doble altura
-const DETAILS_HEIGHT_MULT = 3;  // detalles: un poco más alto que el general
+const GENERAL_HEIGHT_MULT = 2;
+const DETAILS_HEIGHT_MULT = 3;
 const GENERAL_WIDTH_MULT  = 1;
 const DETAILS_WIDTH_MULT  = 1;
 
@@ -482,7 +483,11 @@ const OrdersTab: React.FC = () => {
                 --detail-font: ${DETAILS_FONT_PX}px;
               }
               @media print { @page { size: 80mm auto; margin: 0; } }
-              body { font-family: 'Courier New', monospace; width: 72mm; margin: 0; padding: 2mm; line-height: 1.35; }
+              body {
+                font-family: "Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                width: 72mm; margin: 0; padding: 2mm; line-height: 1.35;
+                font-variant-numeric: tabular-nums; /* ✔ dígitos con ancho fijo */
+              }
               pre  { white-space: pre; margin: 0; }
               .block-general { font-size: var(--ticket-font); }
               .block-detalle { font-size: var(--detail-font); }
@@ -716,12 +721,20 @@ const OrdersTab: React.FC = () => {
                   {!isEditing ? (
                     <>
                       <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
+
+                      {/* ✔ Grid con precio alineado a la derecha */}
                       <div className="bg-gray-50 p-3 rounded-lg text-sm border border-gray-200">
-                        <ul className="list-disc pl-4">
+                        <div className="grid grid-cols-12 gap-x-2">
                           {parsed.map(({ quantity, name, priceNum }, index) => (
-                            <li key={index}>{`${quantity} ${name} - $${priceNum.toLocaleString()}`}</li>
+                            <React.Fragment key={index}>
+                              <div className="col-span-2 whitespace-nowrap">{quantity}</div>
+                              <div className="col-span-7 break-words">{name}</div>
+                              <div className="col-span-3 text-right tabular-nums">
+                                ${priceNum.toLocaleString('es-CO')}
+                              </div>
+                            </React.Fragment>
                           ))}
-                        </ul>
+                        </div>
                       </div>
                     </>
                   ) : (
@@ -735,7 +748,7 @@ const OrdersTab: React.FC = () => {
                         placeholder="Ej: 2, Bandeja Paisa, 28000; 1, Limonada, 6000"
                       />
                       <p className="text-xs text-gray-500 mt-1">
-                        Suma automática: <strong>${editValorRest.toLocaleString()}</strong>
+                        Suma automática: <strong>${editValorRest.toLocaleString('es-CO')}</strong>
                       </p>
                     </>
                   )}
@@ -747,14 +760,14 @@ const OrdersTab: React.FC = () => {
                   {!isEditing ? (
                     <>
                       <span className="font-bold text-gray-900">
-                        TOTAL: ${total.toLocaleString()}
+                        TOTAL: ${total.toLocaleString('es-CO')}
                       </span>
                       <span className="text-sm text-gray-600">
-                        Restaurante: ${order.valor_restaurante.toLocaleString()}
+                        Restaurante: ${order.valor_restaurante.toLocaleString('es-CO')}
                       </span>
                       {order.valor_domicilio > 0 && (
                         <span className="text-sm text-gray-600">
-                          Domicilio: ${order.valor_domicilio.toLocaleString()}
+                          Domicilio: ${order.valor_domicilio.toLocaleString('es-CO')}
                         </span>
                       )}
                     </>
