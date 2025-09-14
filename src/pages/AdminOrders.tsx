@@ -242,7 +242,9 @@ const OrdersTab: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('todos');
   const [filterPayment, setFilterPayment] = useState<string>('todos');
-  const [sortBy, setSortBy] = useState<'fecha' | 'row_number'>('fecha');
+
+  // ✅ Cambio aquí: por defecto ordenar por N° de pedido
+  const [sortBy, setSortBy] = useState<'fecha' | 'row_number'>('row_number');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Edición (un pedido a la vez, sin alterar el layout)
