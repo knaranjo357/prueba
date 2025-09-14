@@ -209,19 +209,35 @@ const encodeCP1252 = (str: string): number[] => {
   return bytes;
 };
 
-/** AUMENTO DE TAMAÑO: habilito doble altura para toda la boleta */
+/** AUMENTO DE TAMAÑO + TIRA MÁS LARGA
+ * - Altura 3x (GS ! 0x02) → MUY visible en cocina
+ * - Interlineado mayor (ESC 3 48) → tira más larga y legible
+ */
 const buildEscposFromLines = (lines: string[]): number[] => {
   const bytes: number[] = [];
-  bytes.push(0x1B, 0x40);           // ESC @  (init)
-  bytes.push(0x1B, 0x74, 0x10);     // ESC t 16  CP1252
-  bytes.push(0x1B, 0x61, 0x00);     // Alineación izquierda
-  bytes.push(0x1D, 0x21, 0x01);     // GS ! 0x01 => Doble ALTURA (más visible en cocina)
 
+  // Init, CP1252, alineación izq
+  bytes.push(0x1B, 0x40);        // ESC @ (init)
+  bytes.push(0x1B, 0x74, 0x10);  // ESC t 16 => CP1252
+  bytes.push(0x1B, 0x61, 0x00);  // ESC a 0 => left
+
+  // Tamaño triple altura (ancho normal)
+  // n = (W-1)*16 + (H-1)  => W=1 => 0, H=3 => 2 => 0x02
+  bytes.push(0x1D, 0x21, 0x02);  // GS ! 0x02
+
+  // Interlineado ampliado (48 dots ~1.6x)
+  bytes.push(0x1B, 0x33, 48);    // ESC 3 48
+
+  // Cuerpo
   const body = lines.join('\n') + '\n';
   bytes.push(...encodeCP1252(body));
 
+  // Reset interlineado
+  bytes.push(0x1B, 0x32);        // ESC 2
+
+  // Feed + corte
   bytes.push(0x0A, 0x0A, 0x0A);
-  bytes.push(0x1D, 0x56, 0x00);     // Corte
+  bytes.push(0x1D, 0x56, 0x00);  // GS V 0 -> corte total
   return bytes;
 };
 
@@ -354,7 +370,7 @@ const OrdersTab: React.FC = () => {
       console.warn('RawBT no disponible, fallback impresión navegador:', err?.message);
     }
 
-    // Fallback navegador con letra MÁS GRANDE (16px)
+    // Fallback navegador con letra MÁS GRANDE (20px) y más interlineado
     const html = `
       <div>
         <pre>${lines.map(l => l.replace(/</g, '&lt;').replace(/>/g, '&gt;')).join(String.fromCharCode(10))}</pre>
@@ -368,8 +384,8 @@ const OrdersTab: React.FC = () => {
             <title>Factura #${order.row_number}</title>
             <style>
               @media print { @page { size: 80mm auto; margin: 0; } }
-              body { font-family: 'Courier New', monospace; font-size: 16px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.35; }
-              pre  { white-space: pre; margin: 0; font-size: 16px; }
+              body { font-family: 'Courier New', monospace; font-size: 20px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.6; }
+              pre  { white-space: pre; margin: 0; font-size: 20px; line-height: 1.6; }
             </style>
           </head>
           <body>
