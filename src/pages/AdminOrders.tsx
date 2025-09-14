@@ -188,6 +188,19 @@ const encodeCP1252 = (str: string): number[] => {
   return bytes;
 };
 
+/** ===== Tamaños de letra (CONFIGURABLES) =====
+ * Ticket (fallback navegador): px
+ * ESC/POS (RawBT): multiplicadores (1–8). Usamos solo altura para no perder columnas.
+ */
+const TICKET_FONT_PX = 20;      // tamaño general del ticket (fallback navegador)
+const DETAILS_FONT_PX = 22;     // tamaño para "Detalle del pedido" (un poco mayor)
+
+/** ESC/POS — multiplicadores de altura (no tocamos el ancho para conservar COLS) */
+const GENERAL_HEIGHT_MULT = 2;  // cuerpo general: doble altura
+const DETAILS_HEIGHT_MULT = 3;  // detalles: un poco más alto que el general
+const GENERAL_WIDTH_MULT  = 1;
+const DETAILS_WIDTH_MULT  = 1;
+
 /** Igual que tu versión estable: doble altura + fallback 16px */
 const buildEscposFromLines = (lines: string[]): number[] => {
   const bytes: number[] = [];
@@ -211,6 +224,55 @@ const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
   try { (window as any).location.href = url; return; } catch {}
   try { const a = document.createElement('a'); a.href = url; a.rel = 'noopener noreferrer'; document.body.appendChild(a); a.click(); document.body.removeChild(a); return; } catch {}
   throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio de impresión activo.');
+};
+
+/** ===== ESC/POS con secciones (detalle más grande) ===== */
+const makeSizeByte = (heightMul = 1, widthMul = 1): number =>
+  ((Math.max(1, widthMul) - 1) << 4) | (Math.max(1, heightMul) - 1);
+
+const buildEscposTicket = (
+  normalBefore: string[],
+  detailLines: string[],
+  normalAfter: string[],
+): number[] => {
+  const bytes: number[] = [];
+  const enc = (arr: string[]) => encodeCP1252(arr.join('\n') + '\n');
+
+  // Init + codepage + alineación
+  bytes.push(0x1B, 0x40);             // ESC @  (init)
+  bytes.push(0x1B, 0x74, 0x10);       // ESC t 16 => CP1252
+  bytes.push(0x1B, 0x61, 0x00);       // ESC a 0 => left
+
+  // Tamaño general
+  bytes.push(0x1D, 0x21, makeSizeByte(GENERAL_HEIGHT_MULT, GENERAL_WIDTH_MULT));
+  bytes.push(...enc(normalBefore));
+
+  // Tamaño detalles
+  bytes.push(0x1D, 0x21, makeSizeByte(DETAILS_HEIGHT_MULT, DETAILS_WIDTH_MULT));
+  bytes.push(...enc(detailLines));
+
+  // Volver a tamaño general
+  bytes.push(0x1D, 0x21, makeSizeByte(GENERAL_HEIGHT_MULT, GENERAL_WIDTH_MULT));
+  bytes.push(...enc(normalAfter));
+
+  // Feed + corte
+  bytes.push(0x0A, 0x0A, 0x0A);
+  bytes.push(0x1D, 0x56, 0x00);
+  return bytes;
+};
+
+const sendToRawBTSections = async (
+  normalBefore: string[],
+  detailLines: string[],
+  normalAfter: string[],
+): Promise<void> => {
+  if (!isAndroid()) throw new Error('Esta impresión directa requiere Android con RawBT instalado.');
+  const escposBytes = buildEscposTicket(normalBefore, detailLines, normalAfter);
+  const base64 = bytesToBase64(escposBytes);
+  const url = `rawbt:base64,${base64}`;
+  try { (window as any).location.href = url; return; } catch {}
+  try { const a = document.createElement('a'); a.href = url; a.rel = 'noopener noreferrer'; document.body.appendChild(a); a.click(); document.body.removeChild(a); return; } catch {}
+  throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio activo.');
 };
 
 /** ===== POST ampliado ===== */
@@ -243,11 +305,11 @@ const OrdersTab: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('todos');
   const [filterPayment, setFilterPayment] = useState<string>('todos');
 
-  // ✅ Cambio aquí: por defecto ordenar por N° de pedido
+  // ✅ Por defecto ordenar por N° de pedido descendente
   const [sortBy, setSortBy] = useState<'fecha' | 'row_number'>('row_number');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  // Edición (un pedido a la vez, sin alterar el layout)
+  // Edición (un pedido a la vez)
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editNombre, setEditNombre] = useState('');
   const [editDireccion, setEditDireccion] = useState('');
@@ -350,41 +412,46 @@ const OrdersTab: React.FC = () => {
     const domicilio = order.valor_domicilio || 0;
     const total = subtotal + domicilio;
 
-    const lines: string[] = [];
-    lines.push(repeat('=', COLS));
-    lines.push(center('LUIS RES'));
-    lines.push(center('Cra 37 #109-24'));
-    lines.push(center('Floridablanca - Caldas'));
-    lines.push(repeat('=', COLS));
+    // --- Secciones: before (general) / detail (más grande) / after (general) ---
+    const before: string[] = [];
+    const detail: string[] = [];
+    const after:  string[] = [];
 
-    lines.push(padRight(`PEDIDO #${order.row_number}`, COLS));
-    lines.push(...wrapLabelValue('Fecha', sanitizeForTicket(order.fecha || '')));
-    lines.push(...wrapLabelValue('Cliente', customerName));
-    lines.push(...wrapLabelValue('Teléfono', customerPhone));
-    lines.push(...wrapLabelValue('Dirección', sanitizeForTicket(order.direccion || '')));
+    // Header / info cliente (tamaño general)
+    before.push(repeat('=', COLS));
+    before.push(center('LUIS RES'));
+    before.push(center('Cra 37 #109-24'));
+    before.push(center('Floridablanca - Caldas'));
+    before.push(repeat('=', COLS));
+    before.push(padRight(`PEDIDO #${order.row_number}`, COLS));
+    before.push(...wrapLabelValue('Fecha', sanitizeForTicket(order.fecha || '')));
+    before.push(...wrapLabelValue('Cliente', customerName));
+    before.push(...wrapLabelValue('Teléfono', customerPhone));
+    before.push(...wrapLabelValue('Dirección', sanitizeForTicket(order.direccion || '')));
+    before.push(repeat('-', COLS));
 
-    lines.push(repeat('-', COLS));
-    lines.push(center('DETALLE DEL PEDIDO'));
-    lines.push(repeat('-', COLS));
-
+    // Detalle del pedido (ligeramente más grande)
+    detail.push(center('DETALLE DEL PEDIDO'));
+    detail.push(repeat('-', COLS));
     items.forEach(({ quantity, name, priceNum }) => {
       const block = formatItemBlock(quantity || '1', sanitizeForTicket(name), priceNum);
-      block.forEach(l => lines.push(l));
+      block.forEach(l => detail.push(l));
     });
+    detail.push(repeat('-', COLS));
 
-    lines.push(repeat('-', COLS));
-    lines.push(totalLine('Subtotal', subtotal));
-    lines.push(totalLine('Domicilio', domicilio));
-    lines.push(totalLine('TOTAL', total));
-    lines.push('');
-    lines.push(...wrapLabelValue('Método de pago', sanitizeForTicket(order.metodo_pago || '')));
-    lines.push(...wrapLabelValue('Estado', sanitizeForTicket(order.estado || '')));
-    lines.push(repeat('=', COLS));
-    lines.push(center('¡Gracias por su compra!'));
-    lines.push(repeat('=', COLS));
+    // Totales / pie (tamaño general)
+    after.push(totalLine('Subtotal', subtotal));
+    after.push(totalLine('Domicilio', domicilio));
+    after.push(totalLine('TOTAL', total));
+    after.push('');
+    after.push(...wrapLabelValue('Método de pago', sanitizeForTicket(order.metodo_pago || '')));
+    after.push(...wrapLabelValue('Estado', sanitizeForTicket(order.estado || '')));
+    after.push(repeat('=', COLS));
+    after.push(center('¡Gracias por su compra!'));
+    after.push(repeat('=', COLS));
 
     try {
-      await sendToRawBT(lines);
+      await sendToRawBTSections(before, detail, after);
       const updated = { ...order, estado: 'impreso' };
       setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
       await postOrderFull(order, { estado: 'impreso' });
@@ -393,12 +460,16 @@ const OrdersTab: React.FC = () => {
       console.warn('RawBT no disponible, fallback impresión navegador:', err?.message);
     }
 
-    // Fallback navegador (igual que tenías: 16px)
+    // ===== Fallback navegador (usa tamaños en px configurables) =====
+    const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const html = `
-      <div>
-        <pre>${lines.map(l => l.replace(/</g, '&lt;').replace(/>/g, '&gt;')).join(String.fromCharCode(10))}</pre>
+      <div class="ticket">
+        <pre class="block-general">${before.map(esc).join('\n')}</pre>
+        <pre class="block-detalle">${detail.map(esc).join('\n')}</pre>
+        <pre class="block-general">${after.map(esc).join('\n')}</pre>
       </div>
     `;
+
     const printWindow = window.open('', '_blank', 'width=380,height=700');
     if (printWindow) {
       printWindow.document.write(`
@@ -406,9 +477,15 @@ const OrdersTab: React.FC = () => {
           <head>
             <title>Factura #${order.row_number}</title>
             <style>
+              :root {
+                --ticket-font: ${TICKET_FONT_PX}px;
+                --detail-font: ${DETAILS_FONT_PX}px;
+              }
               @media print { @page { size: 80mm auto; margin: 0; } }
-              body { font-family: 'Courier New', monospace; font-size: 16px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.35; }
-              pre  { white-space: pre; margin: 0; font-size: 16px; }
+              body { font-family: 'Courier New', monospace; width: 72mm; margin: 0; padding: 2mm; line-height: 1.35; }
+              pre  { white-space: pre; margin: 0; }
+              .block-general { font-size: var(--ticket-font); }
+              .block-detalle { font-size: var(--detail-font); }
             </style>
           </head>
           <body>
@@ -473,7 +550,7 @@ const OrdersTab: React.FC = () => {
 
   return (
     <div className="min-w-0">
-      {/* Barra de filtros sticky (sin cambios visuales) */}
+      {/* Barra de filtros sticky */}
       <div className="sticky top-24 z-20 bg-white/80 backdrop-blur border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -530,7 +607,7 @@ const OrdersTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Cards de pedidos (misma apariencia; solo aparece edición cuando haces clic en Editar) */}
+      {/* Cards de pedidos */}
       <div className="grid gap-4">
         {filteredOrders.map((order) => {
           const parsed = parseDetails(order["detalle pedido"]);
@@ -590,7 +667,7 @@ const OrdersTab: React.FC = () => {
                   {!isEditing ? (
                     <>
                       <p className="font-medium text-gray-900 break-words">{order.nombre}</p>
-                      {/* WhatsApp directo (misma apariencia de enlace) */}
+                      {/* WhatsApp directo */}
                       <p className="text-sm">
                         <a
                           href={`https://wa.me/${encodeURIComponent(phone)}`}
@@ -723,7 +800,7 @@ const OrdersTab: React.FC = () => {
                     Imprimir
                   </button>
 
-                  {/* Estado editable como antes, pero POST manda payload completo */}
+                  {/* Estado editable, POST manda payload completo */}
                   <select
                     value={order.estado}
                     onChange={(e) => updateOrderEstado(order, e.target.value)}
