@@ -35,12 +35,15 @@ const Cart: React.FC = () => {
 
   const handleSubmitOrder = async (deliveryPrice: number) => {
     try {
-      // Format order details like the API expects
-      const detalleItems = items.map(item => {
-        const itemPrice = item.valor + (item.isForTakeaway && item.precio_adicional_llevar ? item.precio_adicional_llevar : 0);
-        return `- ${item.quantity},${item.nombre} ,${itemPrice}`;
-      }).join(';') + ';';
-      
+      const detalleItems =
+        items
+          .map(item => {
+            const itemPrice =
+              item.valor + (item.isForTakeaway && item.precio_adicional_llevar ? item.precio_adicional_llevar : 0);
+            return `- ${item.quantity},${item.nombre} ,${itemPrice}`;
+          })
+          .join(';') + ';';
+
       const orderData = {
         fecha: new Date().toLocaleString('es-CO', {
           timeZone: 'America/Bogota',
@@ -55,7 +58,7 @@ const Cart: React.FC = () => {
         nombre: customerInfo.name,
         numero: `57${customerInfo.phone.replace(/\D/g, '')}@s.whatsapp.net`,
         direccion: customerInfo.deliveryType === 'delivery' ? customerInfo.address : 'Recoger en local',
-        "detalle pedido": detalleItems,
+        'detalle pedido': detalleItems,
         valor_restaurante: calculateTotalPrice(items),
         valor_domicilio: deliveryPrice,
         metodo_pago: customerInfo.paymentMethod,
@@ -64,9 +67,7 @@ const Cart: React.FC = () => {
 
       const response = await fetch('https://n8n.alliasoft.com/webhook/luis-res/hacer-pedido', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
       });
 
@@ -96,59 +97,66 @@ const Cart: React.FC = () => {
           }}
         >
           <motion.div
-            initial={{ y: "100%" }}
+            initial={{ y: '100%' }}
             animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             className="absolute inset-0 bg-gradient-to-br from-cream to-cream-light flex flex-col h-full"
           >
-            {/* Header simplificado */}
+            {/* Header */}
             <div className="bg-white backdrop-blur-xl border-b-2 border-gold/30 sticky top-0 z-10 shadow-luxury">
-              <div className="p-6">
+              <div className="p-4 md:p-6">
                 <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 md:gap-4">
                     {step === 'checkout' && (
                       <motion.button
                         whileHover={{ scale: 1.1, x: -2 }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setStep('cart')}
-                        className="p-3 hover:bg-gold/10 rounded-2xl transition-all border-2 border-transparent hover:border-gold/30"
+                        className="p-2.5 md:p-3 hover:bg-gold/10 rounded-2xl transition-all border-2 border-transparent hover:border-gold/30"
+                        aria-label="Volver"
                       >
-                        <ArrowLeft size={24} className="text-wood-dark" />
+                        <ArrowLeft size={22} className="text-wood-dark" />
                       </motion.button>
                     )}
-                    <div>
-                      <h3 className="text-3xl font-bold text-wood-dark font-title flex items-center gap-3">
+                    <div className="min-w-0">
+                      {/* Título: ocultar “Datos de Entrega” en móvil */}
+                      <h3 className={`font-bold text-wood-dark font-title flex items-center gap-2 md:gap-3 ${
+                        step === 'cart' ? 'text-2xl md:text-3xl' : 'hidden md:flex text-2xl'
+                      }`}>
                         {step === 'cart' ? (
                           <>
                             <div className="p-2 bg-gold/20 rounded-xl">
-                              <ShoppingBag size={28} className="text-gold" />
+                              <ShoppingBag size={24} className="text-gold" />
                             </div>
                             Tu Pedido
                           </>
                         ) : (
                           <>
                             <div className="p-2 bg-gold/20 rounded-xl">
-                              <Sparkles size={28} className="text-gold" />
+                              <Sparkles size={24} className="text-gold" />
                             </div>
                             Datos de Entrega
                           </>
                         )}
                       </h3>
+
                       {step === 'cart' && (
-                        <p className="text-wood-medium text-lg font-medium">
+                        <p className="text-wood-medium text-sm md:text-lg font-medium">
                           {items.length} {items.length === 1 ? 'producto seleccionado' : 'productos seleccionados'}
                         </p>
                       )}
                     </div>
                   </div>
+
                   <motion.button
                     whileHover={{ scale: 1.1, rotate: 90 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={resetCart}
-                    className="text-wood-dark/60 hover:text-wood-dark hover:bg-gold/10 transition-all p-3 rounded-2xl border-2 border-transparent hover:border-gold/30"
+                    className="text-wood-dark/60 hover:text-wood-dark hover:bg-gold/10 transition-all p-2.5 md:p-3 rounded-2xl border-2 border-transparent hover:border-gold/30"
+                    aria-label="Cerrar"
                   >
-                    <X size={28} />
+                    <X size={26} />
                   </motion.button>
                 </div>
               </div>
@@ -169,6 +177,7 @@ const Cart: React.FC = () => {
                     <CartContent onCheckout={() => setStep('checkout')} />
                   </motion.div>
                 )}
+
                 {step === 'checkout' && (
                   <motion.div
                     key="checkout"
@@ -186,6 +195,7 @@ const Cart: React.FC = () => {
                     />
                   </motion.div>
                 )}
+
                 {step === 'success' && (
                   <motion.div
                     key="success"
@@ -244,23 +254,6 @@ const Cart: React.FC = () => {
                         </div>
                       </div>
 
-                      {customerInfo.paymentMethod === 'transferencia' && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6">
-                          <h4 className="font-bold text-blue-800 mb-2">Información de Pago</h4>
-                          <p className="text-blue-700 text-sm mb-3">
-                            Por favor realiza la transferencia y envía el comprobante al siguiente número:
-                          </p>
-                          <a
-                            href="https://wa.me/573166193963"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
-                          >
-                            📱 3166193963
-                          </a>
-                        </div>
-                      )}
-
                       <button
                         onClick={() => {
                           resetCart();
@@ -279,7 +272,7 @@ const Cart: React.FC = () => {
         </motion.div>
       )}
 
-      {/* Enhanced Floating Cart Button */}
+      {/* Botón flotante del carrito */}
       <motion.button
         whileHover={{ scale: 1.1, y: -5 }}
         whileTap={{ scale: 0.9 }}
@@ -292,6 +285,7 @@ const Cart: React.FC = () => {
           items.length > 0 ? 'border-gold/30' : 'border-wood-dark/30'
         }`}
         disabled={items.length === 0}
+        aria-label="Abrir carrito"
       >
         <div className="relative">
           <ShoppingBag size={32} />
