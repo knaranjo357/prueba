@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Printer, RefreshCw, ArrowUpDown } from 'lucide-react';
+import { Printer, RefreshCw, ArrowUpDown, Edit3, Save, X as XIcon } from 'lucide-react';
 
 /** API */
 const ORDERS_API = 'https://n8n.alliasoft.com/webhook/luis-res/pedidos';
@@ -11,7 +11,7 @@ interface Order {
   nombre?: string;
   numero: string;
   direccion: string;
-  "detalle pedido": string;
+  "detalle pedido": string; // en UI mantenemos este nombre (compatibilidad)
   valor_restaurante: number;
   valor_domicilio: number;
   metodo_pago: string;
@@ -209,9 +209,9 @@ const encodeCP1252 = (str: string): number[] => {
   return bytes;
 };
 
-/** AUMENTO DE TAMAÑO + TIRA MÁS LARGA
- * - Altura 3x (GS ! 0x02) → MUY visible en cocina
- * - Interlineado mayor (ESC 3 48) → tira más larga y legible
+/** TAMAÑO: un poquito más pequeño que antes
+ * - Altura 2x (GS ! 0x01)
+ * - Interlineado 36 (antes 48)
  */
 const buildEscposFromLines = (lines: string[]): number[] => {
   const bytes: number[] = [];
@@ -221,12 +221,11 @@ const buildEscposFromLines = (lines: string[]): number[] => {
   bytes.push(0x1B, 0x74, 0x10);  // ESC t 16 => CP1252
   bytes.push(0x1B, 0x61, 0x00);  // ESC a 0 => left
 
-  // Tamaño triple altura (ancho normal)
-  // n = (W-1)*16 + (H-1)  => W=1 => 0, H=3 => 2 => 0x02
-  bytes.push(0x1D, 0x21, 0x02);  // GS ! 0x02
+  // Doble altura (ancho normal)
+  bytes.push(0x1D, 0x21, 0x01);  // GS ! 0x01
 
-  // Interlineado ampliado (48 dots ~1.6x)
-  bytes.push(0x1B, 0x33, 48);    // ESC 3 48
+  // Interlineado moderado
+  bytes.push(0x1B, 0x33, 36);    // ESC 3 36
 
   // Cuerpo
   const body = lines.join('\n') + '\n';
@@ -269,6 +268,30 @@ const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
   throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio de impresión activo.');
 };
 
+/** ===== Utilidades de actualización ===== */
+
+/** Construye el payload "ampliado" para n8n */
+const buildOrderPayload = (o: Order) => ({
+  numero: o.numero,
+  nombre: o.nombre ?? '',
+  direccion: o.direccion ?? '',
+  detalle_pedido: o['detalle pedido'] ?? '',
+  valor_restaurante: o.valor_restaurante ?? 0,
+  valor_domicilio: o.valor_domicilio ?? 0,
+  metodo_pago: o.metodo_pago ?? '',
+  estado: o.estado ?? '',
+});
+
+/** POST genérico: crea/actualiza pedido con payload ampliado */
+const postOrderUpdate = async (o: Order) => {
+  const response = await fetch(ORDERS_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildOrderPayload(o)),
+  });
+  if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
+};
+
 /** ===== Componente ===== */
 const OrdersTab: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -294,23 +317,15 @@ const OrdersTab: React.FC = () => {
     }
   };
 
-  const postOrderStatus = async (numeroRaw: string, newStatus: string) => {
-    const response = await fetch(ORDERS_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ numero: numeroRaw, estado: newStatus }),
-    });
-    if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
-  };
-
+  /** Cambios de estado (usa payload ampliado) */
   const updateOrderEstado = async (order: Order, newStatus: string) => {
-    const numeroRaw = order.numero;
     const prevStatus = order.estado;
+    const updated: Order = { ...order, estado: newStatus };
 
-    setOrders(prev => prev.map(o => (o.row_number === order.row_number ? { ...o, estado: newStatus } : o)));
+    setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
 
     try {
-      await postOrderStatus(numeroRaw, newStatus);
+      await postOrderUpdate(updated);
     } catch (error) {
       console.error('Error updating order status:', error);
       setOrders(prev => prev.map(o => (o.row_number === order.row_number ? { ...o, estado: prevStatus } : o)));
@@ -318,6 +333,21 @@ const OrdersTab: React.FC = () => {
     }
   };
 
+  /** Guardar edición completa (menos numero) */
+  const saveFullUpdate = async (updated: Order) => {
+    // Optimista
+    setOrders(prev => prev.map(o => (o.row_number === updated.row_number ? updated : o)));
+    try {
+      await postOrderUpdate(updated);
+    } catch (e) {
+      console.error('Error guardando cambios:', e);
+      alert('No se pudo guardar los cambios. Revisa la conexión e intenta de nuevo.');
+      // Opcional: podrías recargar pedidos para asegurar consistencia:
+      // fetchOrders();
+    }
+  };
+
+  /** Impresión (y marcar "impreso" usando payload ampliado) */
   const printOrder = async (order: Order) => {
     const customerName = sanitizeForTicket(order.nombre || 'Cliente');
     const customerPhone = cleanPhone(order.numero);
@@ -361,16 +391,15 @@ const OrdersTab: React.FC = () => {
 
     try {
       await sendToRawBT(lines);
-      await postOrderStatus(order.numero, 'impreso');
-      setOrders(prev =>
-        prev.map(o => (o.row_number === order.row_number ? { ...o, estado: 'impreso' } : o))
-      );
+      const updated: Order = { ...order, estado: 'impreso' };
+      setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
+      await postOrderUpdate(updated);
       return;
     } catch (err: any) {
       console.warn('RawBT no disponible, fallback impresión navegador:', err?.message);
     }
 
-    // Fallback navegador con letra MÁS GRANDE (20px) y más interlineado
+    // Fallback navegador: un poco más pequeño (18px) y line-height 1.5
     const html = `
       <div>
         <pre>${lines.map(l => l.replace(/</g, '&lt;').replace(/>/g, '&gt;')).join(String.fromCharCode(10))}</pre>
@@ -384,8 +413,8 @@ const OrdersTab: React.FC = () => {
             <title>Factura #${order.row_number}</title>
             <style>
               @media print { @page { size: 80mm auto; margin: 0; } }
-              body { font-family: 'Courier New', monospace; font-size: 20px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.6; }
-              pre  { white-space: pre; margin: 0; font-size: 20px; line-height: 1.6; }
+              body { font-family: 'Courier New', monospace; font-size: 18px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.5; }
+              pre  { white-space: pre; margin: 0; font-size: 18px; line-height: 1.5; }
             </style>
           </head>
           <body>
@@ -402,16 +431,16 @@ const OrdersTab: React.FC = () => {
       printWindow.document.close();
 
       try {
-        await postOrderStatus(order.numero, 'impreso');
-        setOrders(prev =>
-          prev.map(o => (o.row_number === order.row_number ? { ...o, estado: 'impreso' } : o))
-        );
+        const updated: Order = { ...order, estado: 'impreso' };
+        setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
+        await postOrderUpdate(updated);
       } catch (e) {
         console.error('No se pudo marcar como impreso en fallback:', e);
       }
     }
   };
 
+  /** Filtros/orden */
   const statusOptions = useMemo(() => {
     const setVals = new Set<string>();
     orders.forEach(o => { if (o?.estado) setVals.add(o.estado); });
@@ -448,23 +477,255 @@ const OrdersTab: React.FC = () => {
     return sorted;
   }, [orders, filterStatus, filterPayment, sortBy, sortDir]);
 
-  const getStatusColor = (status: string) => {
-    switch ((status || '').toLowerCase()) {
-      case 'pidiendo': return 'bg-yellow-100 text-yellow-800';
-      case 'confirmado': return 'bg-teal-100 text-teal-800';
-      case 'impreso': return 'bg-indigo-100 text-indigo-800';
-      case 'preparando': return 'bg-blue-100 text-blue-800';
-      case 'en camino': return 'bg-purple-100 text-purple-800';
-      case 'entregado': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+  /** Subcomponente para edición inline */
+  const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
+    const [editing, setEditing] = useState(false);
 
-  const getPaymentColor = (payment: string) => {
-    const p = (payment || '').toLowerCase();
-    if (p.includes('confirmada')) return 'bg-green-100 text-green-800';
-    if (p.includes('espera')) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-blue-100 text-blue-800';
+    // Campos editables
+    const [nombre, setNombre] = useState(order.nombre || '');
+    const [direccion, setDireccion] = useState(order.direccion || '');
+    const [detalle, setDetalle] = useState(order['detalle pedido'] || '');
+    const [valorRest, setValorRest] = useState<number>(order.valor_restaurante || 0);
+    const [valorDom, setValorDom] = useState<number>(order.valor_domicilio || 0);
+    const [metodoPago, setMetodoPago] = useState(order.metodo_pago || '');
+
+    // Autocalcular subtotal del restaurante cuando cambia detalle
+    useEffect(() => {
+      const parsed = parseDetails(detalle);
+      // Sumamos los "priceNum" de cada línea (suponiendo precio de línea)
+      const sum = parsed.reduce((acc, it) => acc + (it.priceNum || 0), 0);
+      setValorRest(sum);
+    }, [detalle]);
+
+    const onCancel = () => {
+      setEditing(false);
+      setNombre(order.nombre || '');
+      setDireccion(order.direccion || '');
+      setDetalle(order['detalle pedido'] || '');
+      setValorRest(order.valor_restaurante || 0);
+      setValorDom(order.valor_domicilio || 0);
+      setMetodoPago(order.metodo_pago || '');
+    };
+
+    const onSave = async () => {
+      const updated: Order = {
+        ...order,
+        nombre,
+        direccion,
+        "detalle pedido": detalle,
+        valor_restaurante: valorRest,
+        valor_domicilio: valorDom,
+        metodo_pago: metodoPago,
+      };
+      await saveFullUpdate(updated);
+      setEditing(true); // permanecer en edición por si siguen ajustando
+    };
+
+    const parsed = parseDetails(order["detalle pedido"]);
+    const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
+    const phone = cleanPhone(order.numero);
+    const anchorId = `pedido-${order.row_number}`;
+
+    return (
+      <div id={anchorId} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex items-start justify-between mb-4 gap-3">
+          <div className="min-w-0">
+            <h3 className="font-bold text-gray-900">Pedido #{order.row_number}</h3>
+            <p className="text-sm text-gray-600">{order.fecha}</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.estado)}`}>
+              {order.estado}
+            </span>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getPaymentColor(order.metodo_pago)}`}>
+              {order.metodo_pago}
+            </span>
+
+            {!editing ? (
+              <button
+                onClick={() => setEditing(true)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                title="Editar"
+              >
+                <Edit3 size={16} /> Editar
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onSave}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-600 text-white hover:bg-green-700"
+                  title="Guardar cambios"
+                >
+                  <Save size={16} /> Guardar
+                </button>
+                <button
+                  onClick={onCancel}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  title="Cancelar"
+                >
+                  <XIcon size={16} /> Cancelar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Info cliente */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="min-w-0">
+            {!editing ? (
+              <>
+                <p className="font-medium text-gray-900 break-words">{order.nombre}</p>
+                {/* Hipervínculo directo a WhatsApp (numero no editable) */}
+                <p className="text-sm">
+                  <a
+                    href={`https://wa.me/${encodeURIComponent(phone)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline break-words"
+                    title="Abrir chat de WhatsApp"
+                  >
+                    {phone}
+                  </a>
+                </p>
+                <p className="text-sm text-gray-600 break-words">{order.direccion}</p>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Número (no editable)</label>
+                  <input
+                    value={phone}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Nombre</label>
+                  <input
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Dirección</label>
+                  <textarea
+                    value={direccion}
+                    onChange={(e) => setDireccion(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    rows={2}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Detalle / edición */}
+          <div>
+            {!editing ? (
+              <>
+                <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
+                <div className="bg-gray-50 p-3 rounded-lg text-sm border border-gray-200">
+                  <ul className="list-disc pl-4">
+                    {parsed.map(({ quantity, name, priceNum }, index) => (
+                      <li key={index}>{`${quantity} ${name} - $${priceNum.toLocaleString()}`}</li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="block text-sm text-gray-600 mb-2">Detalle del pedido (auto-recalcula restaurante)</label>
+                <textarea
+                  value={detalle}
+                  onChange={(e) => setDetalle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  rows={4}
+                  placeholder="Ej: 2, Bandeja Paisa, 28000; 1, Limonada, 6000"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Suma automática: <strong>${valorRest.toLocaleString('es-CO')}</strong>
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Totales y acciones */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-4 flex-wrap">
+            {!editing ? (
+              <>
+                <span className="font-bold text-gray-900">
+                  TOTAL: ${( (order.valor_restaurante || 0) + (order.valor_domicilio || 0) ).toLocaleString()}
+                </span>
+                <span className="text-sm text-gray-600">
+                  Restaurante: ${order.valor_restaurante.toLocaleString()}
+                </span>
+                {order.valor_domicilio > 0 && (
+                  <span className="text-sm text-gray-600">
+                    Domicilio: ${order.valor_domicilio.toLocaleString()}
+                  </span>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-3 flex-wrap">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Valor restaurante (auto)</label>
+                  <input
+                    type="number"
+                    value={valorRest}
+                    onChange={(e) => setValorRest(parseInt(e.target.value || '0', 10))}
+                    className="w-40 px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Valor domicilio</label>
+                  <input
+                    type="number"
+                    value={valorDom}
+                    onChange={(e) => setValorDom(parseInt(e.target.value || '0', 10))}
+                    className="w-40 px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Método de pago</label>
+                  <input
+                    value={metodoPago}
+                    onChange={(e) => setMetodoPago(e.target.value)}
+                    className="w-48 px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Efectivo / Transferencia / ..."
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => printOrder(order)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
+            >
+              <Printer size={16} />
+              Imprimir
+            </button>
+
+            {/* Estado siempre editable vía select */}
+            <select
+              value={order.estado}
+              onChange={(e) => updateOrderEstado(order, e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
+            >
+              {allowedStatuses.map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -528,92 +789,9 @@ const OrdersTab: React.FC = () => {
 
       {/* Cards de pedidos */}
       <div className="grid gap-4">
-        {filteredOrders.map((order) => {
-          const parsed = parseDetails(order["detalle pedido"]);
-          const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
-          const phone = cleanPhone(order.numero);
-          const anchorId = `pedido-${order.row_number}`;
-          const goToAnchor = (e: React.MouseEvent) => {
-            e.preventDefault();
-            document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          };
-          return (
-            <div key={order.row_number} id={anchorId} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="flex items-start justify-between mb-4 gap-3">
-                <div className="min-w-0">
-                  <h3 className="font-bold text-gray-900">Pedido #{order.row_number}</h3>
-                  <p className="text-sm text-gray-600">{order.fecha}</p>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.estado)}`}>
-                    {order.estado}
-                  </span>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getPaymentColor(order.metodo_pago)}`}>
-                    {order.metodo_pago}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="min-w-0">
-                  <p className="font-medium text-gray-900 break-words">{order.nombre}</p>
-                  <p className="text-sm">
-                    <a href={`#${anchorId}`} onClick={goToAnchor} className="text-blue-600 hover:underline break-words">{phone}</a>
-                  </p>
-                  <p className="text-sm text-gray-600 break-words">{order.direccion}</p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
-                  <div className="bg-gray-50 p-3 rounded-lg text-sm border border-gray-200">
-                    <ul className="list-disc pl-4">
-                      {parsed.map(({ quantity, name, priceNum }, index) => (
-                        <li key={index}>{`${quantity} ${name} - $${priceNum.toLocaleString()}`}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <span className="font-bold text-gray-900">
-                    TOTAL: ${total.toLocaleString()}
-                  </span>
-                  <span className="text-sm text-gray-600">
-                    Restaurante: ${order.valor_restaurante.toLocaleString()}
-                  </span>
-                  {order.valor_domicilio > 0 && (
-                    <span className="text-sm text-gray-600">
-                      Domicilio: ${order.valor_domicilio.toLocaleString()}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => printOrder(order)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
-                  >
-                    <Printer size={16} />
-                    Imprimir
-                  </button>
-
-                  <select
-                    value={order.estado}
-                    onChange={(e) => updateOrderEstado(order, e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
-                  >
-                    {allowedStatuses.map(st => (
-                      <option key={st} value={st}>{st}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {filteredOrders.map((order) => (
+          <OrderCard key={order.row_number} order={order} />
+        ))}
       </div>
     </div>
   );
