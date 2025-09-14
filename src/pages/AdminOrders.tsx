@@ -8,14 +8,14 @@ const ORDERS_API = 'https://n8n.alliasoft.com/webhook/luis-res/pedidos';
 interface Order {
   row_number: number;
   fecha: string;
-  nombre?: string | null;
+  nombre?: string;
   numero: string;
-  direccion: string | null;
-  "detalle pedido": string | null; // se recibe así desde el GET
-  valor_restaurante: number | null;
-  valor_domicilio: number | null;
-  metodo_pago: string | null;
-  estado: string | null;
+  direccion: string;
+  "detalle pedido": string;
+  valor_restaurante: number;
+  valor_domicilio: number;
+  metodo_pago: string;
+  estado: string;
 }
 
 /** Estados permitidos */
@@ -28,7 +28,7 @@ const allowedStatuses = [
   'entregado',
 ] as const;
 
-/** ===== Helpers para impresión POS 80 ===== */
+/** ===== Helpers POS 80 ===== */
 const COLS = 42;
 const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join('');
 const padRight = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + repeat(' ', n - s.length));
@@ -37,8 +37,8 @@ const center = (s: string) => {
   const left = Math.floor((COLS - len) / 2);
   return repeat(' ', Math.max(0, left)) + s.slice(0, COLS);
 };
-const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
-const cleanPhone = (raw: string) => (raw || '').replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
+const money = (n: number) => `$${(n || 0).toLocaleString()}`;
+const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
 
 const sanitizeForTicket = (s: string): string =>
   (s || '')
@@ -94,17 +94,14 @@ const parseMoneyToInt = (s: string): number => {
 };
 
 const splitOutsideParens = (s: string, separators = [';']): string[] => {
-  const src = s || '';
   const sepSet = new Set(separators);
   const out: string[] = [];
   let buf = '';
   let depth = 0;
-
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
     if (ch === '(') depth++;
     else if (ch === ')') depth = Math.max(0, depth - 1);
-
     if (depth === 0 && sepSet.has(ch)) {
       if (buf.trim()) out.push(buf.trim());
       buf = '';
@@ -118,17 +115,14 @@ const splitOutsideParens = (s: string, separators = [';']): string[] => {
 
 const splitByCommaOutsideParens = (s: string): string[] => splitOutsideParens(s, [',']);
 
-const parseDetails = (raw: string | null | undefined) => {
+const parseDetails = (raw: string) => {
   if (!raw) return [];
   const itemStrings = splitOutsideParens(raw, [';', '|']).map(x => x.trim()).filter(Boolean);
-
   return itemStrings.map(itemStr => {
     const parts = splitByCommaOutsideParens(itemStr).map(x => x.trim());
-
     let quantity = '';
     let name = '';
     let priceNum = 0;
-
     if (parts.length >= 3) {
       quantity = parts[0].replace(/^-/, '').trim() || '1';
       name = parts.slice(1, parts.length - 1).join(', ').trim();
@@ -142,11 +136,9 @@ const parseDetails = (raw: string | null | undefined) => {
       name = parts[0] || '';
       priceNum = 0;
     }
-
     const qMatch = quantity.match(/-?\d+/);
     if (qMatch) quantity = String(Math.abs(parseInt(qMatch[0], 10)));
     else quantity = '1';
-
     return { quantity, name, priceNum };
   });
 };
@@ -156,18 +148,13 @@ const formatItemBlock = (qty: string, name: string, priceNum: number): string[] 
   const qtyLabel = qty ? `${qty} ` : '';
   const rightWidth = price.length + 1;
   const leftWidth = COLS - rightWidth;
-
   const leftText = (qtyLabel + (name || '')).trim();
   const leftLines = wrapText(leftText, leftWidth);
-
   const out: string[] = [];
   const firstLeft = padRight(leftLines[0] || '', leftWidth);
   out.push(firstLeft + ' ' + price);
-
   const indent = repeat(' ', qtyLabel.length || 0);
-  for (let i = 1; i < leftLines.length; i++) {
-    out.push(padRight(indent + leftLines[i], COLS));
-  }
+  for (let i = 1; i < leftLines.length; i++) out.push(padRight(indent + leftLines[i], COLS));
   return out;
 };
 
@@ -184,94 +171,68 @@ const cp1252Map: Record<string, number> = {
   '€': 0x80, '£': 0xA3, '¥': 0xA5, '¢': 0xA2, '°': 0xB0, '¿': 0xBF, '¡': 0xA1,
   '“': 0x93, '”': 0x94, '‘': 0x91, '’': 0x92, '—': 0x97, '–': 0x96, '…': 0x85,
 };
-
 const asciiFallback: Record<string, string> = {
   '“':'"', '”':'"', '‘':"'", '’':"'", '—':'-', '–':'-', '…':'...', '€':'EUR'
 };
-
 const encodeCP1252 = (str: string): number[] => {
   const bytes: number[] = [];
   for (const ch of str) {
     const code = ch.codePointAt(0)!;
     if (code <= 0x7F) { bytes.push(code); continue; }
     if (cp1252Map[ch] !== undefined) { bytes.push(cp1252Map[ch]); continue; }
-
     const basic = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (basic.length === 1 && basic.charCodeAt(0) <= 0x7F) {
-      bytes.push(basic.charCodeAt(0));
-      continue;
-    }
-    if (asciiFallback[ch]) {
-      for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0));
-      continue;
-    }
-    bytes.push(0x3F); // '?'
+    if (basic.length === 1 && basic.charCodeAt(0) <= 0x7F) { bytes.push(basic.charCodeAt(0)); continue; }
+    if (asciiFallback[ch]) { for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0)); continue; }
+    bytes.push(0x3F);
   }
   return bytes;
 };
 
-/** TAMAÑO: un poquito más pequeño que antes
- * - Altura 2x (GS ! 0x01)
- * - Interlineado 36 (antes 48 del grande)
- */
+/** Igual que tu versión estable: doble altura + fallback 16px */
 const buildEscposFromLines = (lines: string[]): number[] => {
   const bytes: number[] = [];
-  bytes.push(0x1B, 0x40);        // ESC @ (init)
-  bytes.push(0x1B, 0x74, 0x10);  // ESC t 16 => CP1252
-  bytes.push(0x1B, 0x61, 0x00);  // ESC a 0 => left
-  bytes.push(0x1D, 0x21, 0x01);  // GS ! 0x01 => doble altura (ancho normal)
-  bytes.push(0x1B, 0x33, 36);    // ESC 3 36 => interlineado moderado
-
+  bytes.push(0x1B, 0x40);       // ESC @ init
+  bytes.push(0x1B, 0x74, 0x10); // ESC t 16 => CP1252
+  bytes.push(0x1B, 0x61, 0x00); // left
+  bytes.push(0x1D, 0x21, 0x01); // GS ! 0x01 => doble ALTURA
   const body = lines.join('\n') + '\n';
   bytes.push(...encodeCP1252(body));
-
-  bytes.push(0x1B, 0x32);        // ESC 2 => reset interlineado
   bytes.push(0x0A, 0x0A, 0x0A);
-  bytes.push(0x1D, 0x56, 0x00);  // corte
+  bytes.push(0x1D, 0x56, 0x00); // corte
   return bytes;
 };
 
 const isAndroid = (): boolean => /Android/i.test(navigator.userAgent || '');
-
 const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
-  if (!isAndroid()) {
-    throw new Error('Esta impresión directa requiere Android con RawBT instalado.');
-  }
+  if (!isAndroid()) throw new Error('Esta impresión directa requiere Android con RawBT instalado.');
   const escposBytes = buildEscposFromLines(ticketLines);
   const base64 = bytesToBase64(escposBytes);
   const url = `rawbt:base64,${base64}`;
-
   try { (window as any).location.href = url; return; } catch {}
-  try {
-    const a = document.createElement('a');
-    a.href = url; a.rel = 'noopener noreferrer';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    return;
-  } catch {}
+  try { const a = document.createElement('a'); a.href = url; a.rel = 'noopener noreferrer'; document.body.appendChild(a); a.click(); document.body.removeChild(a); return; } catch {}
   throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio de impresión activo.');
 };
 
-/** ===== Utilidades de actualización ===== */
-const safeNum = (n: number | null | undefined) => Number(n || 0);
+/** ===== POST ampliado ===== */
+const buildFullPayload = (o: Order, override?: Partial<Order>) => {
+  const merged = { ...o, ...(override || {}) };
+  return {
+    numero: merged.numero,
+    nombre: merged.nombre ?? '',
+    direccion: merged.direccion ?? '',
+    detalle_pedido: merged['detalle pedido'] ?? '',
+    valor_restaurante: merged.valor_restaurante ?? 0,
+    valor_domicilio: merged.valor_domicilio ?? 0,
+    metodo_pago: merged.metodo_pago ?? '',
+    estado: merged.estado ?? '',
+  };
+};
 
-/** Construye el payload "ampliado" para n8n */
-const buildOrderPayload = (o: Order) => ({
-  numero: o.numero,
-  nombre: o.nombre || '',
-  direccion: o.direccion || '',
-  detalle_pedido: o['detalle pedido'] || '',
-  valor_restaurante: safeNum(o.valor_restaurante),
-  valor_domicilio: safeNum(o.valor_domicilio),
-  metodo_pago: o.metodo_pago || '',
-  estado: o.estado || '',
-});
-
-/** POST genérico: crea/actualiza pedido con payload ampliado */
-const postOrderUpdate = async (o: Order) => {
+const postOrderFull = async (o: Order, override?: Partial<Order>) => {
   const response = await fetch(ORDERS_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildOrderPayload(o)),
+    body: JSON.stringify(buildFullPayload(o, override)),
   });
   if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
 };
@@ -283,6 +244,15 @@ const OrdersTab: React.FC = () => {
   const [filterPayment, setFilterPayment] = useState<string>('todos');
   const [sortBy, setSortBy] = useState<'fecha' | 'row_number'>('fecha');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Edición (un pedido a la vez, sin alterar el layout)
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editDireccion, setEditDireccion] = useState('');
+  const [editDetalle, setEditDetalle] = useState('');
+  const [editValorRest, setEditValorRest] = useState(0);
+  const [editValorDom, setEditValorDom] = useState(0);
+  const [editMetodoPago, setEditMetodoPago] = useState('');
 
   // Carga inicial + auto refresh 20s
   useEffect(() => {
@@ -301,38 +271,81 @@ const OrdersTab: React.FC = () => {
     }
   };
 
-  /** Cambios de estado (usa payload ampliado) */
+  /** Entrar a editar */
+  const startEdit = (o: Order) => {
+    setEditingId(o.row_number);
+    setEditNombre(o.nombre || '');
+    setEditDireccion(o.direccion || '');
+    setEditDetalle(o['detalle pedido'] || '');
+    setEditValorRest(o.valor_restaurante || 0);
+    setEditValorDom(o.valor_domicilio || 0);
+    setEditMetodoPago(o.metodo_pago || '');
+  };
+
+  /** Cancelar edición */
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
+
+  /** Guardar edición */
+  const saveEdit = async (o: Order) => {
+    const updated: Order = {
+      ...o,
+      nombre: editNombre,
+      direccion: editDireccion,
+      "detalle pedido": editDetalle,
+      valor_restaurante: editValorRest,
+      valor_domicilio: editValorDom,
+      metodo_pago: editMetodoPago,
+    };
+    // Optimista
+    setOrders(prev => prev.map(x => x.row_number === o.row_number ? updated : x));
+    try {
+      await postOrderFull(o, {
+        nombre: editNombre,
+        direccion: editDireccion,
+        "detalle pedido": editDetalle,
+        valor_restaurante: editValorRest,
+        valor_domicilio: editValorDom,
+        metodo_pago: editMetodoPago,
+      });
+      setEditingId(null);
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo guardar los cambios.');
+      // revertir (recargar)
+      fetchOrders();
+      setEditingId(null);
+    }
+  };
+
+  /** Auto-cálculo valor_restaurante cuando cambia detalle */
+  useEffect(() => {
+    if (editingId === null) return;
+    const sum = parseDetails(editDetalle).reduce((acc, it) => acc + (it.priceNum || 0), 0);
+    setEditValorRest(sum);
+  }, [editDetalle, editingId]);
+
+  /** Actualizar solo estado, pero con payload completo */
   const updateOrderEstado = async (order: Order, newStatus: string) => {
-    const updated: Order = { ...order, estado: newStatus };
+    const updated = { ...order, estado: newStatus };
     setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
     try {
-      await postOrderUpdate(updated);
+      await postOrderFull(order, { estado: newStatus });
     } catch (error) {
       console.error('Error updating order status:', error);
-      // revertir
       setOrders(prev => prev.map(o => (o.row_number === order.row_number ? order : o)));
       alert('No se pudo actualizar el estado. Intenta nuevamente.');
     }
   };
 
-  /** Guardar edición completa (menos numero) */
-  const saveFullUpdate = async (updated: Order) => {
-    setOrders(prev => prev.map(o => (o.row_number === updated.row_number ? updated : o)));
-    try {
-      await postOrderUpdate(updated);
-    } catch (e) {
-      console.error('Error guardando cambios:', e);
-      alert('No se pudo guardar los cambios. Revisa la conexión e intenta de nuevo.');
-    }
-  };
-
-  /** Impresión (y marcar "impreso" usando payload ampliado) */
+  /** Impresión y marcar impreso con payload completo */
   const printOrder = async (order: Order) => {
     const customerName = sanitizeForTicket(order.nombre || 'Cliente');
     const customerPhone = cleanPhone(order.numero);
     const items = parseDetails(order["detalle pedido"]);
-    const subtotal = safeNum(order.valor_restaurante);
-    const domicilio = safeNum(order.valor_domicilio);
+    const subtotal = order.valor_restaurante || 0;
+    const domicilio = order.valor_domicilio || 0;
     const total = subtotal + domicilio;
 
     const lines: string[] = [];
@@ -370,15 +383,15 @@ const OrdersTab: React.FC = () => {
 
     try {
       await sendToRawBT(lines);
-      const updated: Order = { ...order, estado: 'impreso' };
+      const updated = { ...order, estado: 'impreso' };
       setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
-      await postOrderUpdate(updated);
+      await postOrderFull(order, { estado: 'impreso' });
       return;
     } catch (err: any) {
       console.warn('RawBT no disponible, fallback impresión navegador:', err?.message);
     }
 
-    // Fallback navegador: 18px y line-height 1.5
+    // Fallback navegador (igual que tenías: 16px)
     const html = `
       <div>
         <pre>${lines.map(l => l.replace(/</g, '&lt;').replace(/>/g, '&gt;')).join(String.fromCharCode(10))}</pre>
@@ -392,8 +405,8 @@ const OrdersTab: React.FC = () => {
             <title>Factura #${order.row_number}</title>
             <style>
               @media print { @page { size: 80mm auto; margin: 0; } }
-              body { font-family: 'Courier New', monospace; font-size: 18px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.5; }
-              pre  { white-space: pre; margin: 0; font-size: 18px; line-height: 1.5; }
+              body { font-family: 'Courier New', monospace; font-size: 16px; width: 72mm; margin: 0; padding: 2mm; line-height: 1.35; }
+              pre  { white-space: pre; margin: 0; font-size: 16px; }
             </style>
           </head>
           <body>
@@ -410,9 +423,9 @@ const OrdersTab: React.FC = () => {
       printWindow.document.close();
 
       try {
-        const updated: Order = { ...order, estado: 'impreso' };
+        const updated = { ...order, estado: 'impreso' };
         setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
-        await postOrderUpdate(updated);
+        await postOrderFull(order, { estado: 'impreso' });
       } catch (e) {
         console.error('No se pudo marcar como impreso en fallback:', e);
       }
@@ -434,8 +447,8 @@ const OrdersTab: React.FC = () => {
 
   const filteredOrders = useMemo(() => {
     const byFilters = orders.filter(order => {
-      const statusMatch = filterStatus === 'todos' || (order.estado || '') === filterStatus;
-      const paymentMatch = filterPayment === 'todos' || (order.metodo_pago || '') === filterPayment;
+      const statusMatch = filterStatus === 'todos' || order.estado === filterStatus;
+      const paymentMatch = filterPayment === 'todos' || order.metodo_pago === filterPayment;
       return statusMatch && paymentMatch;
     });
 
@@ -456,259 +469,9 @@ const OrdersTab: React.FC = () => {
     return sorted;
   }, [orders, filterStatus, filterPayment, sortBy, sortDir]);
 
-  /** Subcomponente para edición inline (sin íconos) */
-  const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
-    const [editing, setEditing] = useState(false);
-
-    // Campos editables
-    const [nombre, setNombre] = useState(order.nombre || '');
-    const [direccion, setDireccion] = useState(order.direccion || '');
-    const [detalle, setDetalle] = useState(order['detalle pedido'] || '');
-    const [valorRest, setValorRest] = useState<number>(safeNum(order.valor_restaurante));
-    const [valorDom, setValorDom] = useState<number>(safeNum(order.valor_domicilio));
-    const [metodoPago, setMetodoPago] = useState(order.metodo_pago || '');
-
-    // Autocalcular subtotal del restaurante cuando cambia detalle
-    useEffect(() => {
-      const parsed = parseDetails(detalle);
-      const sum = parsed.reduce((acc, it) => acc + (it.priceNum || 0), 0);
-      setValorRest(sum);
-    }, [detalle]);
-
-    const onCancel = () => {
-      setEditing(false);
-      setNombre(order.nombre || '');
-      setDireccion(order.direccion || '');
-      setDetalle(order['detalle pedido'] || '');
-      setValorRest(safeNum(order.valor_restaurante));
-      setValorDom(safeNum(order.valor_domicilio));
-      setMetodoPago(order.metodo_pago || '');
-    };
-
-    const onSave = async () => {
-      const updated: Order = {
-        ...order,
-        nombre,
-        direccion,
-        "detalle pedido": detalle,
-        valor_restaurante: valorRest,
-        valor_domicilio: valorDom,
-        metodo_pago: metodoPago,
-      };
-      await saveFullUpdate(updated);
-      // permanecemos en edición por si siguen ajustando
-      setEditing(true);
-    };
-
-    const parsed = parseDetails(order["detalle pedido"]);
-    const total = safeNum(order.valor_restaurante) + safeNum(order.valor_domicilio);
-    const phone = cleanPhone(order.numero);
-    const anchorId = `pedido-${order.row_number}`;
-
-    return (
-      <div id={anchorId} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        <div className="flex items-start justify-between mb-4 gap-3">
-          <div className="min-w-0">
-            <h3 className="font-bold text-gray-900">Pedido #{order.row_number}</h3>
-            <p className="text-sm text-gray-600">{order.fecha}</p>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.estado || '')}`}>
-              {order.estado || '—'}
-            </span>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getPaymentColor(order.metodo_pago || '')}`}>
-              {order.metodo_pago || '—'}
-            </span>
-
-            {!editing ? (
-              <button
-                onClick={() => setEditing(true)}
-                className="px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-                title="Editar"
-              >
-                Editar
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onSave}
-                  className="px-3 py-1.5 rounded-md bg-green-600 text-white hover:bg-green-700"
-                  title="Guardar cambios"
-                >
-                  Guardar
-                </button>
-                <button
-                  onClick={onCancel}
-                  className="px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-                  title="Cancelar"
-                >
-                  Cancelar
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Info cliente */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div className="min-w-0">
-            {!editing ? (
-              <>
-                <p className="font-medium text-gray-900 break-words">{order.nombre || ''}</p>
-                {/* Hipervínculo directo a WhatsApp (numero no editable) */}
-                <p className="text-sm">
-                  <a
-                    href={`https://wa.me/${encodeURIComponent(phone)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline break-words"
-                    title="Abrir chat de WhatsApp"
-                  >
-                    {phone}
-                  </a>
-                </p>
-                <p className="text-sm text-gray-600 break-words">{order.direccion || ''}</p>
-              </>
-            ) : (
-              <div className="space-y-2">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Número (no editable)</label>
-                  <input
-                    value={phone}
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Nombre</label>
-                  <input
-                    value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Dirección</label>
-                  <textarea
-                    value={direccion}
-                    onChange={(e) => setDireccion(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    rows={2}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Detalle / edición */}
-          <div>
-            {!editing ? (
-              <>
-                <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
-                <div className="bg-gray-50 p-3 rounded-lg text-sm border border-gray-200">
-                  <ul className="list-disc pl-4">
-                    {parsed.map(({ quantity, name, priceNum }, index) => (
-                      <li key={index}>{`${quantity} ${name} - $${Number(priceNum || 0).toLocaleString('es-CO')}`}</li>
-                    ))}
-                  </ul>
-                </div>
-              </>
-            ) : (
-              <>
-                <label className="block text-sm text-gray-600 mb-2">Detalle del pedido (auto-recalcula restaurante)</label>
-                <textarea
-                  value={detalle}
-                  onChange={(e) => setDetalle(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  rows={4}
-                  placeholder="Ej: 2, Bandeja Paisa, 28000; 1, Limonada, 6000"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Suma automática: <strong>${Number(valorRest || 0).toLocaleString('es-CO')}</strong>
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Totales y acciones */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-4 flex-wrap">
-            {!editing ? (
-              <>
-                <span className="font-bold text-gray-900">
-                  TOTAL: ${Number(total || 0).toLocaleString('es-CO')}
-                </span>
-                <span className="text-sm text-gray-600">
-                  Restaurante: ${Number(order.valor_restaurante || 0).toLocaleString('es-CO')}
-                </span>
-                {safeNum(order.valor_domicilio) > 0 && (
-                  <span className="text-sm text-gray-600">
-                    Domicilio: ${Number(order.valor_domicilio || 0).toLocaleString('es-CO')}
-                  </span>
-                )}
-              </>
-            ) : (
-              <div className="flex items-center gap-3 flex-wrap">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Valor restaurante (auto)</label>
-                  <input
-                    type="number"
-                    value={valorRest}
-                    onChange={(e) => setValorRest(parseInt(e.target.value || '0', 10))}
-                    className="w-40 px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Valor domicilio</label>
-                  <input
-                    type="number"
-                    value={valorDom}
-                    onChange={(e) => setValorDom(parseInt(e.target.value || '0', 10))}
-                    className="w-40 px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Método de pago</label>
-                  <input
-                    value={metodoPago}
-                    onChange={(e) => setMetodoPago(e.target.value)}
-                    className="w-48 px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="Efectivo / Transferencia / ..."
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => printOrder(order)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium shadow-sm"
-            >
-              Imprimir
-            </button>
-
-            {/* Estado siempre editable vía select */}
-            <select
-              value={order.estado || 'pidiendo'}
-              onChange={(e) => updateOrderEstado(order, e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
-            >
-              {allowedStatuses.map(st => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-w-0">
-      {/* Barra de filtros sticky */}
+      {/* Barra de filtros sticky (sin cambios visuales) */}
       <div className="sticky top-24 z-20 bg-white/80 backdrop-blur border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -745,17 +508,18 @@ const OrdersTab: React.FC = () => {
                 </select>
                 <button
                   onClick={() => setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'))}
-                  className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
+                  className="border border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2 bg-white shadow-sm"
                   title={`Orden ${sortDir === 'asc' ? 'ascendente' : 'descendente'}`}
                 >
                   <ArrowUpDown size={16} />
+                  {sortDir === 'asc' ? 'Asc' : 'Desc'}
                 </button>
 
                 <button
                   onClick={fetchOrders}
-                  className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium shadow-sm"
+                  className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
                 >
-                  <RefreshCw size={16} className="inline mr-2" />
+                  <RefreshCw size={16} />
                   Actualizar
                 </button>
               </div>
@@ -764,11 +528,214 @@ const OrdersTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Cards de pedidos */}
+      {/* Cards de pedidos (misma apariencia; solo aparece edición cuando haces clic en Editar) */}
       <div className="grid gap-4">
-        {filteredOrders.map((order) => (
-          <OrderCard key={order.row_number} order={order} />
-        ))}
+        {filteredOrders.map((order) => {
+          const parsed = parseDetails(order["detalle pedido"]);
+          const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
+          const phone = cleanPhone(order.numero);
+          const isEditing = editingId === order.row_number;
+          const anchorId = `pedido-${order.row_number}`;
+          const goToAnchor = (e: React.MouseEvent) => {
+            e.preventDefault();
+            document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          };
+
+          return (
+            <div key={order.row_number} id={anchorId} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex items-start justify-between mb-4 gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-gray-900">Pedido #{order.row_number}</h3>
+                  <p className="text-sm text-gray-600">{order.fecha}</p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                    {order.estado}
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                    {order.metodo_pago}
+                  </span>
+
+                  {!isEditing ? (
+                    <button
+                      onClick={() => startEdit(order)}
+                      className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
+                    >
+                      Editar
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => saveEdit(order)}
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium shadow-sm"
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
+                      >
+                        Cancelar
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="min-w-0">
+                  {!isEditing ? (
+                    <>
+                      <p className="font-medium text-gray-900 break-words">{order.nombre}</p>
+                      {/* WhatsApp directo (misma apariencia de enlace) */}
+                      <p className="text-sm">
+                        <a
+                          href={`https://wa.me/${encodeURIComponent(phone)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline break-words"
+                          title="Abrir chat de WhatsApp"
+                        >
+                          {phone}
+                        </a>
+                      </p>
+                      <p className="text-sm text-gray-600 break-words">{order.direccion}</p>
+                    </>
+                  ) : (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Número (no editable)</label>
+                        <input
+                          value={phone}
+                          disabled
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Nombre</label>
+                        <input
+                          value={editNombre}
+                          onChange={(e) => setEditNombre(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Dirección</label>
+                        <textarea
+                          value={editDireccion}
+                          onChange={(e) => setEditDireccion(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  {!isEditing ? (
+                    <>
+                      <p className="text-sm text-gray-600 mb-2">Detalle del pedido:</p>
+                      <div className="bg-gray-50 p-3 rounded-lg text-sm border border-gray-200">
+                        <ul className="list-disc pl-4">
+                          {parsed.map(({ quantity, name, priceNum }, index) => (
+                            <li key={index}>{`${quantity} ${name} - $${priceNum.toLocaleString()}`}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <label className="block text-sm text-gray-600 mb-2">Detalle del pedido (auto-recalcula restaurante)</label>
+                      <textarea
+                        value={editDetalle}
+                        onChange={(e) => setEditDetalle(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        rows={4}
+                        placeholder="Ej: 2, Bandeja Paisa, 28000; 1, Limonada, 6000"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Suma automática: <strong>${editValorRest.toLocaleString()}</strong>
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-4 flex-wrap">
+                  {!isEditing ? (
+                    <>
+                      <span className="font-bold text-gray-900">
+                        TOTAL: ${total.toLocaleString()}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        Restaurante: ${order.valor_restaurante.toLocaleString()}
+                      </span>
+                      {order.valor_domicilio > 0 && (
+                        <span className="text-sm text-gray-600">
+                          Domicilio: ${order.valor_domicilio.toLocaleString()}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Valor restaurante (auto)</label>
+                        <input
+                          type="number"
+                          value={editValorRest}
+                          onChange={(e) => setEditValorRest(parseInt(e.target.value || '0', 10))}
+                          className="w-40 px-3 py-2 border border-gray-300 rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Valor domicilio</label>
+                        <input
+                          type="number"
+                          value={editValorDom}
+                          onChange={(e) => setEditValorDom(parseInt(e.target.value || '0', 10))}
+                          className="w-40 px-3 py-2 border border-gray-300 rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Método de pago</label>
+                        <input
+                          value={editMetodoPago}
+                          onChange={(e) => setEditMetodoPago(e.target.value)}
+                          className="w-48 px-3 py-2 border border-gray-300 rounded-md"
+                          placeholder="Efectivo / Transferencia / ..."
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => printOrder(order)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
+                  >
+                    <Printer size={16} />
+                    Imprimir
+                  </button>
+
+                  {/* Estado editable como antes, pero POST manda payload completo */}
+                  <select
+                    value={order.estado}
+                    onChange={(e) => updateOrderEstado(order, e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm"
+                  >
+                    {allowedStatuses.map(st => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
