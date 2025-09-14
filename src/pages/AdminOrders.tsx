@@ -193,8 +193,8 @@ const encodeCP1252 = (str: string): number[] => {
 };
 
 /** ===== Tamaños (EXACTOS pedidas en fallback) ===== */
-const TICKET_FONT_PX = 20;   // general
-const DETAILS_FONT_PX = 22;  // items
+const TICKET_FONT_PX = 16;   // general
+const DETAILS_FONT_PX = 18;  // items
 const LINE_HEIGHT = 1.32;    // ajuste fino para evitar saltos/overflow visual
 
 /** ESC/POS — multiplicadores (no son px; solo afectan RawBT) */
