@@ -27,6 +27,19 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
   const [deliveryAreas, setDeliveryAreas] = useState<any[]>([]);
   const [loadingAreas, setLoadingAreas] = useState(false);
 
+  /** Detectar escritura/teclado para compactar UI */
+  const [isTyping, setIsTyping] = useState(false);
+  useEffect(() => {
+    const onFocusIn = () => setIsTyping(true);
+    const onFocusOut = () => setTimeout(() => setIsTyping(false), 120);
+    window.addEventListener('focusin', onFocusIn);
+    window.addEventListener('focusout', onFocusOut);
+    return () => {
+      window.removeEventListener('focusin', onFocusIn);
+      window.removeEventListener('focusout', onFocusOut);
+    };
+  }, []);
+
   const cartTotal = calculateTotalPrice(items);
   const deliveryPrice = selectedNeighborhood
     ? deliveryAreas.find(area => area.barrio === selectedNeighborhood)?.precio || 0
@@ -93,17 +106,13 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
 
   const canProceedToNext = () => {
     switch (currentStep) {
-      case 1:
-        return true;
-      case 2:
-        return Boolean(customerInfo.name.trim() && customerInfo.phone.trim());
+      case 1: return true;
+      case 2: return Boolean(customerInfo.name.trim() && customerInfo.phone.trim());
       case 3:
         if (customerInfo.deliveryType === 'pickup') return true;
         return Boolean(customerInfo.address.trim() && selectedNeighborhood);
-      case 4:
-        return true;
-      default:
-        return false;
+      case 4: return true;
+      default: return false;
     }
   };
 
@@ -137,47 +146,60 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
     return Boolean(customerInfo.name.trim() && customerInfo.phone.trim());
   };
 
+  /** Asegura que el input quede visible al abrir teclado */
+  const handleFieldFocus = (e: React.FocusEvent<HTMLElement>) => {
+    try {
+      e.currentTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } catch {}
+  };
+
+  const showSectionTitles = !isTyping; // oculta títulos mientras se escribe (también en desktop)
+
   return (
     <div className="flex flex-col h-full bg-gradient-to-br from-cream to-cream-light touch-manipulation">
-      {/* Header: oculto en móvil para ahorrar espacio */}
-      <div className="hidden md:block bg-white/90 backdrop-blur-sm border-b border-gold/20 p-4 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <motion.button
-            whileHover={{ scale: 1.05, x: -2 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onBack}
-            className="flex items-center gap-2 text-wood-dark hover:text-gold transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span className="font-medium">Volver</span>
-          </motion.button>
-          <div className="text-center">
-            <p className="text-sm text-wood-medium">
-              Paso {currentStep} de {totalSteps}
-            </p>
+      {/* Header: totalmente oculto en móvil y también al escribir */}
+      {showSectionTitles && (
+        <div className="hidden md:block bg-white/90 backdrop-blur-sm border-b border-gold/20 p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <motion.button
+              whileHover={{ scale: 1.05, x: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={onBack}
+              className="flex items-center gap-2 text-wood-dark hover:text-gold transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="font-medium">Volver</span>
+            </motion.button>
+            <div className="text-center">
+              <p className="text-sm text-wood-medium">
+                Paso {currentStep} de {totalSteps}
+              </p>
+            </div>
+            <div className="w-16" />
           </div>
-          <div className="w-16" />
         </div>
-      </div>
+      )}
 
       {/* Contenido principal */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 pb-24 md:pb-6">
         <AnimatePresence mode="wait">
-          {/* Step 1: Delivery Type */}
+          {/* Step 1 */}
           {currentStep === 1 && (
             <motion.div
               key="step1"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="max-w-md mx-auto space-y-4 md:space-y-6"
+              className="max-w-md mx-auto space-y-3 md:space-y-6"
             >
-              {/* Título oculto en móvil */}
-              <div className="hidden md:block text-center mb-4 md:mb-8">
-                <h3 className="text-2xl font-bold text-wood-dark mb-2">¿Cómo prefieres tu pedido?</h3>
-              </div>
+              {/* Título oculto en móvil y al escribir */}
+              {showSectionTitles && (
+                <div className="hidden md:block text-center mb-4 md:mb-8">
+                  <h3 className="text-2xl font-bold text-wood-dark mb-2">¿Cómo prefieres tu pedido?</h3>
+                </div>
+              )}
 
-              <div className="space-y-3 md:space-y-4">
+              <div className="space-y-2.5 md:space-y-4">
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -221,45 +243,52 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
             </motion.div>
           )}
 
-          {/* Step 2: Personal Information */}
+          {/* Step 2 */}
           {currentStep === 2 && (
             <motion.div
               key="step2"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="max-w-md mx-auto space-y-4 md:space-y-6"
+              className="max-w-md mx-auto space-y-3 md:space-y-6"
             >
-              {/* Título oculto en móvil */}
-              <div className="hidden md:block text-center mb-4 md:mb-8">
-                <User className="text-gold mx-auto mb-4 w-12 h-12" />
-                <h3 className="text-2xl font-bold text-wood-dark mb-2">Tus datos</h3>
-                <p className="text-wood-medium">Para contactarte sobre tu pedido</p>
-              </div>
+              {showSectionTitles && (
+                <div className="hidden md:block text-center mb-4 md:mb-8">
+                  <User className="text-gold mx-auto mb-4 w-12 h-12" />
+                  <h3 className="text-2xl font-bold text-wood-dark mb-2">Tus datos</h3>
+                  <p className="text-wood-medium">Para contactarte sobre tu pedido</p>
+                </div>
+              )}
 
-              <div className="space-y-3 md:space-y-4">
+              <div className="space-y-2.5 md:space-y-4">
                 <div>
-                  <label className="block text-wood-dark font-medium mb-2">Nombre completo</label>
+                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                    Nombre completo
+                  </label>
                   <input
                     type="text"
                     inputMode="text"
                     value={customerInfo.name}
                     onChange={(e) => setCustomerInfo(prev => ({ ...prev, name: e.target.value }))}
-                    className="w-full px-4 py-3 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg"
+                    onFocus={handleFieldFocus}
+                    className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
                     placeholder="Tu nombre completo"
                     autoFocus
                   />
                 </div>
 
                 <div>
-                  <label className="block text-wood-dark font-medium mb-2">Teléfono</label>
+                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                    Teléfono
+                  </label>
                   <input
                     type="tel"
                     inputMode="tel"
                     pattern="[0-9]*"
                     value={customerInfo.phone}
                     onChange={(e) => setCustomerInfo(prev => ({ ...prev, phone: e.target.value }))}
-                    className="w-full px-4 py-3 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg"
+                    onFocus={handleFieldFocus}
+                    className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
                     placeholder="300 123 4567"
                   />
                 </div>
@@ -267,29 +296,29 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
             </motion.div>
           )}
 
-          {/* Step 3: Address (only for delivery) */}
+          {/* Step 3 */}
           {currentStep === 3 && customerInfo.deliveryType === 'delivery' && (
             <motion.div
               key="step3"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="max-w-md mx-auto space-y-4 md:space-y-6"
+              className="max-w-md mx-auto space-y-3 md:space-y-6"
             >
-              {/* Título oculto en móvil (era el que quitaba espacio) */}
-              <div className="hidden md:block text-center mb-4 md:mb-8">
-                <MapPin className="text-gold mx-auto mb-4 w-12 h-12" />
-                <h3 className="text-2xl font-bold text-wood-dark mb-2">¿A dónde enviamos?</h3>
-              </div>
+              {showSectionTitles && (
+                <div className="hidden md:block text-center mb-4 md:mb-8">
+                  <MapPin className="text-gold mx-auto mb-4 w-12 h-12" />
+                  <h3 className="text-2xl font-bold text-wood-dark mb-2">¿A dónde enviamos?</h3>
+                </div>
+              )}
 
-              <div className="space-y-3 md:space-y-4">
-                {/* Neighborhood Selection */}
+              <div className="space-y-2.5 md:space-y-4">
+                {/* Barrio */}
                 <div>
-                  <label className="block text-wood-dark font-medium mb-2">
+                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
                     Barrio de entrega
                   </label>
 
-                  {/* Search bar */}
                   <div className="relative mb-2 md:mb-3">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-wood-medium w-5 h-5" />
                     <input
@@ -298,20 +327,19 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
                       placeholder="Buscar barrio..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px]"
+                      onFocus={handleFieldFocus}
+                      className="w-full pl-10 pr-4 py-2.5 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] scroll-mb-40"
                     />
                   </div>
 
-                  {/* Loading state */}
                   {loadingAreas && (
                     <div className="text-center py-3">
-                      <p className="text-wood-medium">Cargando barrios...</p>
+                      <p className="text-wood-medium text-sm">Cargando barrios...</p>
                     </div>
                   )}
 
-                  {/* Neighborhoods list */}
                   {!loadingAreas && (
-                    <div className="max-h-56 md:max-h-64 overflow-y-auto space-y-2">
+                    <div className="max-h-40 md:max-h-64 overflow-y-auto space-y-2">
                       {filteredNeighborhoods.map(neighborhood => (
                         <motion.button
                           key={neighborhood.barrio}
@@ -336,16 +364,19 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
                   )}
                 </div>
 
-                {/* Address Input */}
+                {/* Dirección */}
                 {selectedNeighborhood && (
                   <div>
-                    <label className="block text-wood-dark font-medium mb-2">Dirección completa</label>
+                    <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                      Dirección completa
+                    </label>
                     <input
                       type="text"
                       inputMode="text"
                       value={customerInfo.address}
                       onChange={(e) => setCustomerInfo(prev => ({ ...prev, address: e.target.value }))}
-                      className="w-full px-4 py-3 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg"
+                      onFocus={handleFieldFocus}
+                      className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
                       placeholder="Calle 123 #45-67, Apto 101"
                       autoFocus
                     />
@@ -355,22 +386,23 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
             </motion.div>
           )}
 
-          {/* Step 4: Payment Method */}
+          {/* Step 4 */}
           {currentStep === 4 && (
             <motion.div
               key="step4"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="max-w-md mx-auto space-y-4 md:space-y-6"
+              className="max-w-md mx-auto space-y-3 md:space-y-6"
             >
-              {/* Título oculto en móvil */}
-              <div className="hidden md:block text-center mb-4 md:mb-8">
-                <CreditCard className="text-gold mx-auto mb-4 w-12 h-12" />
-                <h3 className="text-2xl font-bold text-wood-dark mb-2">¿Cómo pagas?</h3>
-              </div>
+              {showSectionTitles && (
+                <div className="hidden md:block text-center mb-4 md:mb-8">
+                  <CreditCard className="text-gold mx-auto mb-4 w-12 h-12" />
+                  <h3 className="text-2xl font-bold text-wood-dark mb-2">¿Cómo pagas?</h3>
+                </div>
+              )}
 
-              <div className="space-y-3 md:space-y-4">
+              <div className="space-y-2.5 md:space-y-4">
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -425,31 +457,36 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* Footer: compacto en móvil */}
-      <div className="border-t border-gold/20 bg-white/90 backdrop-blur-sm p-3 md:p-4 flex-shrink-0">
-        {/* Total */}
-        <div className="bg-gold/10 rounded-xl p-3 mb-3 md:mb-4">
-          <div className="flex justify-between items-center">
-            <span className="font-bold text-wood-dark text-sm md:text-base">Total:</span>
-            <span className="text-lg md:text-xl font-bold text-gold">
-              {formatPrice(cartTotal + (customerInfo.deliveryType === 'delivery' ? deliveryPrice : 0))}
-            </span>
-          </div>
-          {customerInfo.deliveryType === 'delivery' && deliveryPrice > 0 && (
-            <div className="text-xs md:text-sm text-wood-medium mt-1">
-              Incluye domicilio: {formatPrice(deliveryPrice)}
+      {/* Footer compacto y “keyboard-aware” */}
+      <div
+        className={`border-t border-gold/20 bg-white/90 backdrop-blur-sm ${isTyping ? 'p-2' : 'p-3 md:p-4'} flex-shrink-0 sticky bottom-0`}
+        style={{ paddingBottom: `calc(env(safe-area-inset-bottom) + ${isTyping ? '6px' : '12px'})` }}
+      >
+        {/* Total: oculto mientras se escribe para ganar espacio */}
+        {!isTyping && (
+          <div className="bg-gold/10 rounded-xl p-3 mb-3 md:mb-4">
+            <div className="flex justify-between items-center">
+              <span className="font-bold text-wood-dark text-sm md:text-base">Total:</span>
+              <span className="text-lg md:text-xl font-bold text-gold">
+                {formatPrice(cartTotal + (customerInfo.deliveryType === 'delivery' ? deliveryPrice : 0))}
+              </span>
             </div>
-          )}
-        </div>
+            {customerInfo.deliveryType === 'delivery' && deliveryPrice > 0 && (
+              <div className="text-xs md:text-sm text-wood-medium mt-1">
+                Incluye domicilio: {formatPrice(deliveryPrice)}
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* Botones navegación */}
+        {/* Botones */}
         <div className="flex gap-2 md:gap-3">
           {currentStep > 1 && (
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={prevStep}
-              className="px-4 py-2 md:px-6 md:py-3 bg-wood-light/20 hover:bg-wood-light/30 text-wood-dark rounded-xl font-medium transition-all text-sm md:text-base"
+              className={`px-4 ${isTyping ? 'py-1.5' : 'py-2'} md:px-6 md:py-3 bg-wood-light/20 hover:bg-wood-light/30 text-wood-dark rounded-xl font-medium transition-all text-sm md:text-base`}
             >
               Anterior
             </motion.button>
@@ -461,7 +498,7 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
               whileTap={canProceedToNext() ? { scale: 0.98 } : {}}
               onClick={nextStep}
               disabled={!canProceedToNext()}
-              className={`flex-1 py-2 px-4 md:py-3 md:px-6 rounded-xl font-bold transition-all text-sm md:text-base ${
+              className={`flex-1 ${isTyping ? 'py-2' : 'py-2'} md:py-3 rounded-xl font-bold transition-all text-sm md:text-base ${
                 canProceedToNext()
                   ? 'bg-gold hover:bg-gold/90 text-white shadow-lg'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
@@ -475,7 +512,7 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
               whileTap={isFormValid() ? { scale: 0.98 } : {}}
               onClick={() => onSubmit(deliveryPrice)}
               disabled={!isFormValid()}
-              className={`flex-1 flex items-center justify-center gap-2 md:gap-3 py-2 px-4 md:py-3 md:px-6 rounded-xl font-bold transition-all text-sm md:text-base ${
+              className={`flex-1 flex items-center justify-center gap-2 md:gap-3 ${isTyping ? 'py-2' : 'py-2'} md:py-3 rounded-xl font-bold transition-all text-sm md:text-base ${
                 isFormValid()
                   ? 'bg-gold hover:bg-gold/90 text-white shadow-lg'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
