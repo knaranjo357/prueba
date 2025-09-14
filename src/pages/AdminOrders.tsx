@@ -28,7 +28,7 @@ const allowedStatuses = [
   'entregado',
 ] as const;
 
-/** ===== Helpers POS 80 ===== */
+/** ===== Helpers POS 80 (para ESC/POS) ===== */
 const COLS = 42;
 const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join('');
 const padRight = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + repeat(' ', n - s.length));
@@ -38,7 +38,7 @@ const center = (s: string) => {
   return repeat(' ', Math.max(0, left)) + s.slice(0, COLS);
 };
 
-/** ✔ Moneda fija en es-CO para evitar caracteres no monoespaciados */
+/** ✔ Moneda fija en es-CO */
 const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
 
 const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
@@ -146,11 +146,11 @@ const parseDetails = (raw: string) => {
   });
 };
 
-/** ✔ Mantiene el precio estrictamente en la última columna (alineado a derecha) */
+/** ✔ Mantiene el precio a la derecha (para ESC/POS) */
 const formatItemBlock = (qty: string, name: string, priceNum: number): string[] => {
   const price = money(priceNum);
   const qtyLabel = qty ? `${qty} ` : '';
-  const rightWidth = price.length + 1; // 1 espacio separador
+  const rightWidth = price.length + 1; // 1 espacio
   const leftWidth = COLS - rightWidth;
   const leftText = (qtyLabel + (name || '')).trim();
   const leftLines = wrapText(leftText, leftWidth);
@@ -192,23 +192,23 @@ const encodeCP1252 = (str: string): number[] => {
   return bytes;
 };
 
-/** ===== Tamaños de letra (CONFIGURABLES) ===== */
-const TICKET_FONT_PX = 20;
-const DETAILS_FONT_PX = 22;
+/** ===== Tamaños (EXACTOS pedidas en fallback) ===== */
+const TICKET_FONT_PX = 20;   // general
+const DETAILS_FONT_PX = 22;  // items
+const LINE_HEIGHT = 1.32;    // ajuste fino para evitar saltos/overflow visual
 
-/** ESC/POS — multiplicadores de altura (no tocamos el ancho para conservar COLS) */
+/** ESC/POS — multiplicadores (no son px; solo afectan RawBT) */
 const GENERAL_HEIGHT_MULT = 2;
 const DETAILS_HEIGHT_MULT = 3;
 const GENERAL_WIDTH_MULT  = 1;
 const DETAILS_WIDTH_MULT  = 1;
 
-/** Igual que tu versión estable: doble altura + fallback 16px */
 const buildEscposFromLines = (lines: string[]): number[] => {
   const bytes: number[] = [];
   bytes.push(0x1B, 0x40);       // ESC @ init
   bytes.push(0x1B, 0x74, 0x10); // ESC t 16 => CP1252
   bytes.push(0x1B, 0x61, 0x00); // left
-  bytes.push(0x1D, 0x21, 0x01); // GS ! 0x01 => doble ALTURA
+  bytes.push(0x1D, 0x21, 0x01); // doble ALTURA
   const body = lines.join('\n') + '\n';
   bytes.push(...encodeCP1252(body));
   bytes.push(0x0A, 0x0A, 0x0A);
@@ -223,7 +223,12 @@ const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
   const base64 = bytesToBase64(escposBytes);
   const url = `rawbt:base64,${base64}`;
   try { (window as any).location.href = url; return; } catch {}
-  try { const a = document.createElement('a'); a.href = url; a.rel = 'noopener noreferrer'; document.body.appendChild(a); a.click(); document.body.removeChild(a); return; } catch {}
+  try {
+    const a = document.createElement('a');
+    a.href = url; a.rel = 'noopener noreferrer';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return;
+  } catch {}
   throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio de impresión activo.');
 };
 
@@ -240,9 +245,9 @@ const buildEscposTicket = (
   const enc = (arr: string[]) => encodeCP1252(arr.join('\n') + '\n');
 
   // Init + codepage + alineación
-  bytes.push(0x1B, 0x40);             // ESC @  (init)
-  bytes.push(0x1B, 0x74, 0x10);       // ESC t 16 => CP1252
-  bytes.push(0x1B, 0x61, 0x00);       // ESC a 0 => left
+  bytes.push(0x1B, 0x40);
+  bytes.push(0x1B, 0x74, 0x10);  // CP1252
+  bytes.push(0x1B, 0x61, 0x00);  // left
 
   // Tamaño general
   bytes.push(0x1D, 0x21, makeSizeByte(GENERAL_HEIGHT_MULT, GENERAL_WIDTH_MULT));
@@ -272,7 +277,12 @@ const sendToRawBTSections = async (
   const base64 = bytesToBase64(escposBytes);
   const url = `rawbt:base64,${base64}`;
   try { (window as any).location.href = url; return; } catch {}
-  try { const a = document.createElement('a'); a.href = url; a.rel = 'noopener noreferrer'; document.body.appendChild(a); a.click(); document.body.removeChild(a); return; } catch {}
+  try {
+    const a = document.createElement('a');
+    a.href = url; a.rel = 'noopener noreferrer';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return;
+  } catch {}
   throw new Error('No se pudo invocar RawBT. Verifica que RawBT esté instalado y el servicio activo.');
 };
 
@@ -348,9 +358,7 @@ const OrdersTab: React.FC = () => {
   };
 
   /** Cancelar edición */
-  const cancelEdit = () => {
-    setEditingId(null);
-  };
+  const cancelEdit = () => setEditingId(null);
 
   /** Guardar edición */
   const saveEdit = async (o: Order) => {
@@ -378,7 +386,6 @@ const OrdersTab: React.FC = () => {
     } catch (e) {
       console.error(e);
       alert('No se pudo guardar los cambios.');
-      // revertir (recargar)
       fetchOrders();
       setEditingId(null);
     }
@@ -413,12 +420,11 @@ const OrdersTab: React.FC = () => {
     const domicilio = order.valor_domicilio || 0;
     const total = subtotal + domicilio;
 
-    // --- Secciones: before (general) / detail (más grande) / after (general) ---
+    // --- ESC/POS: se construyen líneas monoespaciadas (bien para RawBT) ---
     const before: string[] = [];
     const detail: string[] = [];
     const after:  string[] = [];
 
-    // Header / info cliente (tamaño general)
     before.push(repeat('=', COLS));
     before.push(center('LUIS RES'));
     before.push(center('Cra 37 #109-24'));
@@ -431,7 +437,6 @@ const OrdersTab: React.FC = () => {
     before.push(...wrapLabelValue('Dirección', sanitizeForTicket(order.direccion || '')));
     before.push(repeat('-', COLS));
 
-    // Detalle del pedido (ligeramente más grande)
     detail.push(center('DETALLE DEL PEDIDO'));
     detail.push(repeat('-', COLS));
     items.forEach(({ quantity, name, priceNum }) => {
@@ -440,7 +445,6 @@ const OrdersTab: React.FC = () => {
     });
     detail.push(repeat('-', COLS));
 
-    // Totales / pie (tamaño general)
     after.push(totalLine('Subtotal', subtotal));
     after.push(totalLine('Domicilio', domicilio));
     after.push(totalLine('TOTAL', total));
@@ -451,6 +455,7 @@ const OrdersTab: React.FC = () => {
     after.push(center('¡Gracias por su compra!'));
     after.push(repeat('=', COLS));
 
+    // Intento RawBT primero
     try {
       await sendToRawBTSections(before, detail, after);
       const updated = { ...order, estado: 'impreso' };
@@ -458,46 +463,63 @@ const OrdersTab: React.FC = () => {
       await postOrderFull(order, { estado: 'impreso' });
       return;
     } catch (err: any) {
-      console.warn('RawBT no disponible, fallback impresión navegador:', err?.message);
+      console.warn('RawBT no disponible, usando fallback de navegador:', err?.message);
     }
 
-    // ===== Fallback navegador (usa grid para alinear precios a la derecha) =====
-    const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // ===== Fallback navegador (todo 20px; items 22px; sin desbordes) =====
+    const esc = (s: string) =>
+      (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
     const itemsHtml = items.map(({ quantity, name, priceNum }) => `
-      <div class="item-row">
+      <div class="row item">
         <div class="qty">${esc(quantity || '1')}</div>
         <div class="name">${esc(sanitizeForTicket(name))}</div>
         <div class="price">${esc(money(priceNum))}</div>
       </div>
     `).join('');
 
-    const totalsHtml = `
-      <div class="total-line"><span>Subtotal</span><span>${esc(money(subtotal))}</span></div>
-      <div class="total-line"><span>Domicilio</span><span>${esc(money(domicilio))}</span></div>
-      <div class="total-line total-strong"><span>TOTAL</span><span>${esc(money(total))}</span></div>
-    `;
-
     const html = `
       <div class="ticket">
-        <pre class="block-general">${before.map(esc).join('\n')}</pre>
-
-        <div class="detalle">
-          <div class="section-title">DETALLE DEL PEDIDO</div>
-          <div class="items">${itemsHtml}</div>
-          <div class="divider"></div>
+        <div class="header">
+          <div class="h1">LUIS RES</div>
+          <div class="h2">Cra 37 #109-24</div>
+          <div class="h2">Floridablanca - Caldas</div>
         </div>
 
-        <div class="resumen">
-          ${totalsHtml}
-          <div class="kv"><span class="k">Método de pago:</span><span class="v">${esc(sanitizeForTicket(order.metodo_pago || ''))}</span></div>
-          <div class="kv"><span class="k">Estado:</span><span class="v">${esc(sanitizeForTicket(order.estado || ''))}</span></div>
-          <pre class="block-general">${[
-            repeat('=', COLS),
-            center('¡Gracias por su compra!'),
-            repeat('=', COLS),
-          ].map(esc).join('\n')}</pre>
+        <div class="hr"></div>
+
+        <div class="meta">
+          <div class="kv"><span class="k">PEDIDO</span><span class="v">#${order.row_number}</span></div>
+          <div class="kv"><span class="k">Fecha</span><span class="v">${esc(order.fecha || '')}</span></div>
+          <div class="kv"><span class="k">Cliente</span><span class="v">${esc(customerName)}</span></div>
+          <div class="kv"><span class="k">Teléfono</span><span class="v">${esc(customerPhone)}</span></div>
+          <div class="kv"><span class="k">Dirección</span><span class="v">${esc(order.direccion || '')}</span></div>
         </div>
+
+        <div class="hr"></div>
+
+        <div class="section-title">DETALLE DEL PEDIDO</div>
+
+        <div class="items">
+          ${itemsHtml}
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="totals">
+          <div class="row"><span>Subtotal</span><span class="val">${esc(money(subtotal))}</span></div>
+          <div class="row"><span>Domicilio</span><span class="val">${esc(money(domicilio))}</span></div>
+          <div class="row strong"><span>TOTAL</span><span class="val">${esc(money(total))}</span></div>
+        </div>
+
+        <div class="extra">
+          <div class="kv"><span class="k">Método de pago</span><span class="v">${esc(order.metodo_pago || '')}</span></div>
+          <div class="kv"><span class="k">Estado</span><span class="v">${esc(order.estado || '')}</span></div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="footer">¡Gracias por su compra!</div>
       </div>
     `;
 
@@ -508,32 +530,63 @@ const OrdersTab: React.FC = () => {
           <head>
             <title>Factura #${order.row_number}</title>
             <style>
-              :root {
-                --ticket-font: ${TICKET_FONT_PX}px;   /* tamaño general */
-                --detail-font: ${DETAILS_FONT_PX}px; /* tamaño para items */
-              }
               @media print { @page { size: 80mm auto; margin: 0; } }
               * { box-sizing: border-box; }
+              html, body { margin: 0; padding: 0; }
               body {
-                margin: 0;
                 font-family: "Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
                 font-variant-numeric: tabular-nums;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact; print-color-adjust: exact;
               }
-              .ticket {
-                width: 72mm;               /* ancho útil en rollo 80mm */
-                padding: 2mm;
-                margin: 0;
-              }
-              pre { white-space: pre-wrap; margin: 0; }
-              .block-general { font-size: var(--ticket-font); line-height: 1.35; }
-              .section-title { text-align: center; font-size: var(--detail-font); margin: 2mm 0 1mm; }
-              .divider { border-top: 1px solid #000; margin: 1mm 0; }
+              .ticket { width: 72mm; margin: 0; padding: 2mm; }
 
-              /* === Items: qty | nombre (envuelve) | precio (derecha) === */
-              .items { display: grid; row-gap: 1mm; font-size: var(--detail-font); line-height: 1.35; }
-              .item-row {
+              /* Tamaños exactos pedidos */
+              :root {
+                --fs-general: ${TICKET_FONT_PX}px;
+                --fs-items: ${DETAILS_FONT_PX}px;
+                --lh: ${LINE_HEIGHT};
+              }
+
+              .hr { border-top: 1px solid #000; margin: 2mm 0; }
+
+              .header {
+                text-align: center;
+                line-height: var(--lh);
+              }
+              .header .h1 { font-size: var(--fs-items); font-weight: 700; }
+              .header .h2 { font-size: var(--fs-general); }
+
+              .meta, .extra {
+                display: grid;
+                row-gap: 1mm;
+                font-size: var(--fs-general);
+                line-height: var(--lh);
+              }
+              .kv {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                column-gap: 2mm;
+                align-items: baseline;
+              }
+              .kv .k { white-space: nowrap; font-weight: 600; }
+              .kv .v { overflow-wrap: anywhere; word-break: break-word; }
+
+              .section-title {
+                text-align: center;
+                font-size: var(--fs-items);
+                font-weight: 600;
+                line-height: var(--lh);
+                margin: 1mm 0;
+              }
+
+              /* === Items: qty | name | price === */
+              .items {
+                display: grid;
+                row-gap: 1mm;
+                font-size: var(--fs-items);
+                line-height: var(--lh);
+              }
+              .row.item {
                 display: grid;
                 grid-template-columns: auto 1fr min-content;
                 column-gap: 2mm;
@@ -541,25 +594,30 @@ const OrdersTab: React.FC = () => {
               }
               .qty { white-space: nowrap; }
               .name { overflow-wrap: anywhere; word-break: break-word; }
-              .price { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+              .price { white-space: nowrap; text-align: right; }
 
-              /* === Totales: etiqueta | valor (derecha fijo) === */
-              .resumen { margin-top: 2mm; }
-              .total-line {
+              /* === Totales === */
+              .totals {
+                display: grid;
+                row-gap: 1mm;
+                font-size: var(--fs-general);
+                line-height: var(--lh);
+              }
+              .totals .row {
                 display: grid;
                 grid-template-columns: 1fr min-content;
                 column-gap: 2mm;
                 align-items: baseline;
-                font-size: var(--ticket-font);
-                line-height: 1.35;
               }
-              .total-line span:last-child { text-align: right; white-space: nowrap; }
-              .total-strong { font-weight: 700; }
+              .totals .row .val { white-space: nowrap; text-align: right; }
+              .totals .row.strong { font-weight: 800; }
 
-              /* Etiquetas varias (pago/estado) */
-              .kv { display: grid; grid-template-columns: auto 1fr; column-gap: 1mm; margin: 1mm 0; font-size: var(--ticket-font); }
-              .kv .k { white-space: nowrap; }
-              .kv .v { overflow-wrap: anywhere; }
+              .footer {
+                text-align: center;
+                font-size: var(--fs-general);
+                line-height: var(--lh);
+                font-weight: 600;
+              }
             </style>
           </head>
           <body>
@@ -689,10 +747,6 @@ const OrdersTab: React.FC = () => {
           const phone = cleanPhone(order.numero);
           const isEditing = editingId === order.row_number;
           const anchorId = `pedido-${order.row_number}`;
-          const goToAnchor = (e: React.MouseEvent) => {
-            e.preventDefault();
-            document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          };
 
           return (
             <div key={order.row_number} id={anchorId} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -749,7 +803,6 @@ const OrdersTab: React.FC = () => {
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline break-words"
                           title="Abrir chat de WhatsApp"
-                          onClick={goToAnchor}
                         >
                           {phone}
                         </a>
