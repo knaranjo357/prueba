@@ -217,6 +217,27 @@ const buildEscposFromLines = (lines: string[]): number[] => {
 };
 
 const isAndroid = (): boolean => /Android/i.test(navigator.userAgent || '');
+
+/** === NUEVO: enviar HTML (idéntico al PC) a RawBT mediante data URI === */
+const sendHtmlToRawBT = async (fullHtml: string): Promise<void> => {
+  if (!isAndroid()) throw new Error('Solo Android con RawBT.');
+  // btoa espera Latin1: convertimos UTF-16 -> UTF-8 seguro
+  const toBase64 = (s: string) => btoa(unescape(encodeURIComponent(s)));
+  const base64 = toBase64(fullHtml);
+  const url = `rawbt:data:text/html;base64,${base64}`;
+  try {
+    (window as any).location.href = url;
+    return;
+  } catch {}
+  try {
+    const a = document.createElement('a');
+    a.href = url; a.rel = 'noopener noreferrer';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return;
+  } catch {}
+  throw new Error('No se pudo invocar RawBT con HTML.');
+};
+
 const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
   if (!isAndroid()) throw new Error('Esta impresión directa requiere Android con RawBT instalado.');
   const escposBytes = buildEscposFromLines(ticketLines);
@@ -420,7 +441,7 @@ const OrdersTab: React.FC = () => {
     const domicilio = order.valor_domicilio || 0;
     const total = subtotal + domicilio;
 
-    // --- ESC/POS: se construyen líneas monoespaciadas (bien para RawBT) ---
+    // --- ESC/POS: se construyen líneas monoespaciadas (bien para RawBT como 2ª opción) ---
     const before: string[] = [];
     const detail: string[] = [];
     const after:  string[] = [];
@@ -455,18 +476,7 @@ const OrdersTab: React.FC = () => {
     after.push(center('¡Gracias por su compra!'));
     after.push(repeat('=', COLS));
 
-    // Intento RawBT primero
-    try {
-      await sendToRawBTSections(before, detail, after);
-      const updated = { ...order, estado: 'impreso' };
-      setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
-      await postOrderFull(order, { estado: 'impreso' });
-      return;
-    } catch (err: any) {
-      console.warn('RawBT no disponible, usando fallback de navegador:', err?.message);
-    }
-
-    // ===== Fallback navegador (todo 20px; items 22px; sin desbordes) =====
+    // ===== HTML (idéntico al PC) =====
     const esc = (s: string) =>
       (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -478,7 +488,7 @@ const OrdersTab: React.FC = () => {
       </div>
     `).join('');
 
-    const html = `
+    const innerHtml = `
       <div class="ticket">
         <div class="header">
           <div class="h1">LUIS RES</div>
@@ -523,114 +533,143 @@ const OrdersTab: React.FC = () => {
       </div>
     `;
 
+    // Documento HTML completo (para RawBT y para ventana del navegador)
+    const fullHtml = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8"/>
+          <title>Factura #${order.row_number}</title>
+          <style>
+            @media print { @page { size: 80mm auto; margin: 0; } }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; }
+            body {
+              font-family: "Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+              font-variant-numeric: tabular-nums;
+              -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            }
+            .ticket { width: 72mm; margin: 0; padding: 2mm; }
+
+            :root {
+              --fs-general: ${TICKET_FONT_PX}px;
+              --fs-items: ${DETAILS_FONT_PX}px;
+              --lh: ${LINE_HEIGHT};
+            }
+
+            .hr { border-top: 1px solid #000; margin: 2mm 0; }
+
+            .header { text-align: center; line-height: var(--lh); }
+            .header .h1 { font-size: var(--fs-items); font-weight: 700; }
+            .header .h2 { font-size: var(--fs-general); }
+
+            .meta, .extra {
+              display: grid;
+              row-gap: 1mm;
+              font-size: var(--fs-general);
+              line-height: var(--lh);
+            }
+            .kv {
+              display: grid;
+              grid-template-columns: auto 1fr;
+              column-gap: 2mm;
+              align-items: baseline;
+            }
+            .kv .k { white-space: nowrap; font-weight: 600; }
+            .kv .v { overflow-wrap: anywhere; word-break: break-word; }
+
+            .section-title {
+              text-align: center;
+              font-size: var(--fs-items);
+              font-weight: 600;
+              line-height: var(--lh);
+              margin: 1mm 0;
+            }
+
+            .items {
+              display: grid;
+              row-gap: 1mm;
+              font-size: var(--fs-items);
+              line-height: var(--lh);
+            }
+            .row.item {
+              display: grid;
+              grid-template-columns: auto 1fr min-content;
+              column-gap: 2mm;
+              align-items: start;
+            }
+            .qty { white-space: nowrap; }
+            .name { overflow-wrap: anywhere; word-break: break-word; }
+            .price { white-space: nowrap; text-align: right; }
+
+            .totals {
+              display: grid;
+              row-gap: 1mm;
+              font-size: var(--fs-general);
+              line-height: var(--lh);
+            }
+            .totals .row {
+              display: grid;
+              grid-template-columns: 1fr min-content;
+              column-gap: 2mm;
+              align-items: baseline;
+            }
+            .totals .row .val { white-space: nowrap; text-align: right; }
+            .totals .row.strong { font-weight: 800; }
+
+            .footer {
+              text-align: center;
+              font-size: var(--fs-general);
+              line-height: var(--lh);
+              font-weight: 600;
+            }
+          </style>
+        </head>
+        <body>
+          ${innerHtml}
+          <script>
+            // Si se abre en ventana normal (PC), imprimimos y cerramos
+            try {
+              window.onload = function() {
+                if (typeof window.print === 'function') {
+                  window.print();
+                  setTimeout(function() { window.close(); }, 600);
+                }
+              }
+            } catch (e) {}
+          </script>
+        </body>
+      </html>
+    `;
+
+    // ===== 1) ANDROID -> RawBT con HTML idéntico al PC =====
+    if (isAndroid()) {
+      try {
+        await sendHtmlToRawBT(fullHtml);
+        const updated = { ...order, estado: 'impreso' };
+        setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
+        await postOrderFull(order, { estado: 'impreso' });
+        return;
+      } catch (err: any) {
+        console.warn('RawBT HTML no disponible, probando ESC/POS:', err?.message);
+      }
+
+      // ===== 2) ANDROID fallback -> ESC/POS secciones =====
+      try {
+        await sendToRawBTSections(before, detail, after);
+        const updated = { ...order, estado: 'impreso' };
+        setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
+        await postOrderFull(order, { estado: 'impreso' });
+        return;
+      } catch (err: any) {
+        console.warn('RawBT ESC/POS no disponible, usando ventana:', err?.message);
+      }
+    }
+
+    // ===== 3) Ventana del navegador (PC o último recurso) =====
     const printWindow = window.open('', '_blank', 'width=380,height=700');
     if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Factura #${order.row_number}</title>
-            <style>
-              @media print { @page { size: 80mm auto; margin: 0; } }
-              * { box-sizing: border-box; }
-              html, body { margin: 0; padding: 0; }
-              body {
-                font-family: "Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-                font-variant-numeric: tabular-nums;
-                -webkit-print-color-adjust: exact; print-color-adjust: exact;
-              }
-              .ticket { width: 72mm; margin: 0; padding: 2mm; }
-
-              /* Tamaños exactos pedidos */
-              :root {
-                --fs-general: ${TICKET_FONT_PX}px;
-                --fs-items: ${DETAILS_FONT_PX}px;
-                --lh: ${LINE_HEIGHT};
-              }
-
-              .hr { border-top: 1px solid #000; margin: 2mm 0; }
-
-              .header {
-                text-align: center;
-                line-height: var(--lh);
-              }
-              .header .h1 { font-size: var(--fs-items); font-weight: 700; }
-              .header .h2 { font-size: var(--fs-general); }
-
-              .meta, .extra {
-                display: grid;
-                row-gap: 1mm;
-                font-size: var(--fs-general);
-                line-height: var(--lh);
-              }
-              .kv {
-                display: grid;
-                grid-template-columns: auto 1fr;
-                column-gap: 2mm;
-                align-items: baseline;
-              }
-              .kv .k { white-space: nowrap; font-weight: 600; }
-              .kv .v { overflow-wrap: anywhere; word-break: break-word; }
-
-              .section-title {
-                text-align: center;
-                font-size: var(--fs-items);
-                font-weight: 600;
-                line-height: var(--lh);
-                margin: 1mm 0;
-              }
-
-              /* === Items: qty | name | price === */
-              .items {
-                display: grid;
-                row-gap: 1mm;
-                font-size: var(--fs-items);
-                line-height: var(--lh);
-              }
-              .row.item {
-                display: grid;
-                grid-template-columns: auto 1fr min-content;
-                column-gap: 2mm;
-                align-items: start;
-              }
-              .qty { white-space: nowrap; }
-              .name { overflow-wrap: anywhere; word-break: break-word; }
-              .price { white-space: nowrap; text-align: right; }
-
-              /* === Totales === */
-              .totals {
-                display: grid;
-                row-gap: 1mm;
-                font-size: var(--fs-general);
-                line-height: var(--lh);
-              }
-              .totals .row {
-                display: grid;
-                grid-template-columns: 1fr min-content;
-                column-gap: 2mm;
-                align-items: baseline;
-              }
-              .totals .row .val { white-space: nowrap; text-align: right; }
-              .totals .row.strong { font-weight: 800; }
-
-              .footer {
-                text-align: center;
-                font-size: var(--fs-general);
-                line-height: var(--lh);
-                font-weight: 600;
-              }
-            </style>
-          </head>
-          <body>
-            ${html}
-            <script>
-              window.onload = function() {
-                window.print();
-                setTimeout(function() { window.close(); }, 600);
-              }
-            </script>
-          </body>
-        </html>
-      `);
+      printWindow.document.write(fullHtml);
       printWindow.document.close();
 
       try {
