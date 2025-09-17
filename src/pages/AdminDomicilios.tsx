@@ -62,13 +62,13 @@ const AdminDomicilios: React.FC = () => {
         return;
       }
       const payload = {
-        barrio: barrio.trim(),
-        precio: Number(precio) || 0,
+        barrio: barrio.trim(),               // {{ $json.body.barrio }}
+        precio: Number(precio) || 0,         // {{ $json.body.precio }}
       };
       const res = await fetch(DOMICILIOS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload), // {{ $json.body.barrio }} / {{ $json.body.precio }}
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       cancelEdit();
@@ -121,7 +121,7 @@ const AdminDomicilios: React.FC = () => {
         </div>
       </div>
 
-      {/* Form nuevo/edición (en línea, estilo OrdersTab) */}
+      {/* Form nuevo */}
       {editingId === 'new' && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
           <h3 className="font-bold text-gray-900 mb-3">Crear barrio</h3>
