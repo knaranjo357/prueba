@@ -102,13 +102,6 @@ const Admin: React.FC = () => {
       <div className="bg-white/80 backdrop-blur border-b border-gray-100 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 min-w-0">
-              <Settings className="text-gold" size={32} />
-              <div className="min-w-0">
-                <h1 className="text-2xl font-bold text-gray-900 truncate">Panel de Administración</h1>
-                <p className="text-gray-600">Luis Res</p>
-              </div>
-            </div>
 
             <div className="flex items-center gap-4">
               <div className="flex flex-wrap gap-1 bg-gray-100 rounded-lg p-1 border border-gray-200">
