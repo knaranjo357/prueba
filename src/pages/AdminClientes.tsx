@@ -12,22 +12,19 @@ interface Cliente {
 
 const CLIENTES_API = 'https://n8n.alliasoft.com/webhook/luis-res/clientes';
 
-/** Normaliza el whatsapp a 573XXXXXXXXX (sin +, espacios, etc.) */
+/** Normaliza el whatsapp a 57XXXXXXXXXX (sin +, espacios, guiones) */
 const normalizeWhatsApp = (raw: string): string => {
-  const digits = (raw || '').replace(/\D+/g, ''); // solo números
+  const digits = (raw || '').replace(/\D+/g, '');
   if (!digits) return '';
-  // si ya empieza por 57 -> mantener
-  if (digits.startsWith('57')) return digits;
-  // si empieza por 00357... o 0057... (casos raros) – quitamos 00 inicial
+  // 57 + 10 dígitos:
+  if (digits.startsWith('57') && digits.length >= 12) return digits;
   const no00 = digits.replace(/^00/, '');
-  if (no00.startsWith('57')) return no00;
-  // si empieza por 3XXXXXXXXX (móvil Colombia) -> anteponer 57
+  if (no00.startsWith('57') && no00.length >= 12) return no00;
+  // 3 + 9 dígitos -> anteponer 57
   if (/^3\d{9}$/.test(no00)) return `57${no00}`;
-  // fallback: si empieza por 57 después de quitar 0s al inicio
-  const noLeadingZeros = no00.replace(/^0+/, '');
-  if (noLeadingZeros.startsWith('57')) return noLeadingZeros;
-  // último recurso: anteponer 57
-  return `57${noLeadingZeros}`;
+  const noZeros = no00.replace(/^0+/, '');
+  if (noZeros.startsWith('57') && noZeros.length >= 12) return noZeros;
+  return `57${noZeros}`;
 };
 
 const AdminClientes: React.FC = () => {
@@ -99,11 +96,11 @@ const AdminClientes: React.FC = () => {
         return;
       }
       const payload = {
-        whatsapp: Number(wpp),         // {{ $json.body.whatsapp }}
-        nombre: (nombre || '').trim(), // {{ $json.body.nombre }}
-        direccion: (direccion || '').trim(), // {{ $json.body.direccion }}
-        domicilio: Number(domicilio) || 0,   // {{ $json.body.domicilio }}
-        notas: (notas || '').trim(),         // {{ $json.body.notas }}
+        whatsapp: Number(wpp),              // {{ $json.body.whatsapp }}
+        nombre: (nombre || '').trim(),      // {{ $json.body.nombre }}
+        direccion: (direccion || '').trim(),// {{ $json.body.direccion }}
+        domicilio: Number(domicilio) || 0,  // {{ $json.body.domicilio }}
+        notas: (notas || '').trim(),        // {{ $json.body.notas }}
       };
       const res = await fetch(CLIENTES_API, {
         method: 'POST',
@@ -222,4 +219,141 @@ const AdminClientes: React.FC = () => {
             <button onClick={save} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm">
               <Save size={16} /> Guardar
             </button>
-            <button onClick={cancelEdit} className="border border-gray-300 round
+            <button onClick={cancelEdit} className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2">
+              <X size={16} /> Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista */}
+      <div className="grid gap-4">
+        {loading && <div className="text-sm text-gray-500">Cargando…</div>}
+        {filtered.map((c) => {
+          const isEditing = editingId === c.row_number;
+          const wpp = normalizeWhatsApp(String(c.whatsapp ?? ''));
+          return (
+            <div key={c.row_number ?? `${c.whatsapp}-${c.nombre}`} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-gray-900">Cliente</h3>
+                  <p className="text-sm text-gray-600">#{c.row_number ?? '-'}</p>
+                </div>
+                {!isEditing ? (
+                  <button
+                    onClick={() => startEdit(c)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2"
+                  >
+                    <Pencil size={16} /> Editar
+                  </button>
+                ) : (
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={save} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm">
+                      <Save size={16} /> Guardar
+                    </button>
+                    <button onClick={cancelEdit} className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2">
+                      <X size={16} /> Cancelar
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {!isEditing ? (
+                <div className="grid md:grid-cols-5 gap-4 mt-4">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">WhatsApp</p>
+                    {wpp ? (
+                      <a
+                        href={`https://wa.me/${encodeURIComponent(wpp)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline break-words inline-flex items-center gap-1"
+                        title="Abrir chat de WhatsApp"
+                      >
+                        <MessageSquareText size={14} /> {wpp}
+                      </a>
+                    ) : (
+                      <p className="text-gray-500">—</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Nombre</p>
+                    <p className="font-medium break-words">{c.nombre || '—'}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-sm text-gray-600 mb-1">Dirección</p>
+                    <p className="font-medium break-words">{c.direccion || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Domicilio</p>
+                    <p className="font-medium">
+                      {c.domicilio !== '' && c.domicilio !== null && c.domicilio !== undefined
+                        ? `$${Number(c.domicilio || 0).toLocaleString('es-CO')}`
+                        : '—'}
+                    </p>
+                  </div>
+                  {c.notas ? (
+                    <div className="md:col-span-5">
+                      <p className="text-sm text-gray-600 mb-1">Notas</p>
+                      <p className="font-medium break-words">{c.notas}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-5 gap-3 mt-4">
+                  <div className="md:col-span-1">
+                    <label className="block text-xs text-gray-600 mb-1">WhatsApp (57 + 10 dígitos)</label>
+                    <input
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Guardado como: <strong>{normalizeWhatsApp(whatsapp) || '—'}</strong>
+                    </p>
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-xs text-gray-600 mb-1">Nombre</label>
+                    <input
+                      value={nombre}
+                      onChange={(e) => setNombre(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-gray-600 mb-1">Dirección</label>
+                    <input
+                      value={direccion}
+                      onChange={(e) => setDireccion(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-xs text-gray-600 mb-1">Domicilio</label>
+                    <input
+                      type="number"
+                      value={domicilio}
+                      onChange={(e) => setDomicilio(parseInt(e.target.value || '0', 10))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div className="md:col-span-5">
+                    <label className="block text-xs text-gray-600 mb-1">Notas</label>
+                    <textarea
+                      value={notas}
+                      onChange={(e) => setNotas(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+export default AdminClientes;
