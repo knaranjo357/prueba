@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Settings, LogOut, Menu as MenuIcon, ShoppingBag } from 'lucide-react';
+import { Settings, LogOut, Menu as MenuIcon, ShoppingBag, MapPin, Users } from 'lucide-react';
 import MenuTab from './AdminMenu';
 import OrdersTab from './AdminOrders';
+import DomiciliosTab from './AdminDomicilios';
+import ClientesTab from './AdminClientes';
+
+type TabKey = 'menu' | 'orders' | 'domicilios' | 'clientes';
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<'menu' | 'orders'>('menu');
+  const [activeTab, setActiveTab] = useState<TabKey>('menu');
 
   useEffect(() => {
     const saved = localStorage.getItem('admin_auth');
@@ -76,6 +80,26 @@ const Admin: React.FC = () => {
     );
   }
 
+  const TabButton: React.FC<{
+    id: TabKey;
+    active: TabKey;
+    onClick: (id: TabKey) => void;
+    label: string;
+    icon: React.ReactNode;
+  }> = ({ id, active, onClick, label, icon }) => (
+    <button
+      onClick={() => onClick(id)}
+      className={`px-4 py-2 rounded-md font-medium transition-colors flex items-center gap-2 ${
+        active === id
+          ? 'bg-white text-gold shadow-sm border border-gray-200'
+          : 'text-gray-600 hover:text-gray-900'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Header */}
@@ -91,29 +115,11 @@ const Admin: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                <button
-                  onClick={() => setActiveTab('menu')}
-                  className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                    activeTab === 'menu'
-                      ? 'bg-white text-gold shadow-sm border border-gray-200'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <MenuIcon size={16} className="inline mr-2" />
-                  Menú
-                </button>
-                <button
-                  onClick={() => setActiveTab('orders')}
-                  className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                    activeTab === 'orders'
-                      ? 'bg-white text-gold shadow-sm border border-gray-200'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <ShoppingBag size={16} className="inline mr-2" />
-                  Pedidos
-                </button>
+              <div className="flex flex-wrap gap-1 bg-gray-100 rounded-lg p-1 border border-gray-200">
+                <TabButton id="menu" active={activeTab} onClick={setActiveTab} label="Menú" icon={<MenuIcon size={16} />} />
+                <TabButton id="orders" active={activeTab} onClick={setActiveTab} label="Pedidos" icon={<ShoppingBag size={16} />} />
+                <TabButton id="domicilios" active={activeTab} onClick={setActiveTab} label="Domicilios" icon={<MapPin size={16} />} />
+                <TabButton id="clientes" active={activeTab} onClick={setActiveTab} label="Clientes" icon={<Users size={16} />} />
               </div>
 
               <button
@@ -130,7 +136,10 @@ const Admin: React.FC = () => {
 
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === 'menu' ? <MenuTab /> : <OrdersTab />}
+        {activeTab === 'menu' && <MenuTab />}
+        {activeTab === 'orders' && <OrdersTab />}
+        {activeTab === 'domicilios' && <DomiciliosTab />}
+        {activeTab === 'clientes' && <ClientesTab />}
       </div>
     </div>
   );
