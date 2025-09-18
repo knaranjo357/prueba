@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { RefreshCw, Pencil, X, Save, Plus, Search, MessageSquareText } from 'lucide-react';
 
 interface Cliente {
@@ -16,11 +16,9 @@ const CLIENTES_API = 'https://n8n.alliasoft.com/webhook/luis-res/clientes';
 const normalizeWhatsApp = (raw: string): string => {
   const digits = (raw || '').replace(/\D+/g, '');
   if (!digits) return '';
-  // 57 + 10 dígitos:
   if (digits.startsWith('57') && digits.length >= 12) return digits;
   const no00 = digits.replace(/^00/, '');
   if (no00.startsWith('57') && no00.length >= 12) return no00;
-  // 3 + 9 dígitos -> anteponer 57
   if (/^3\d{9}$/.test(no00)) return `57${no00}`;
   const noZeros = no00.replace(/^0+/, '');
   if (noZeros.startsWith('57') && noZeros.length >= 12) return noZeros;
@@ -30,18 +28,23 @@ const normalizeWhatsApp = (raw: string): string => {
 const AdminClientes: React.FC = () => {
   const [items, setItems] = useState<Cliente[]>([]);
   const [query, setQuery] = useState('');
-  const [editingId, setEditingId] = useState<number | 'new' | null>(null);
-
-  // form
-  const [nombre, setNombre] = useState('');
-  const [whatsapp, setWhatsapp] = useState('');
-  const [direccion, setDireccion] = useState('');
-  const [domicilio, setDomicilio] = useState<number>(0);
-  const [notas, setNotas] = useState('');
-
   const [loading, setLoading] = useState(false);
 
-  const fetchItems = async () => {
+  // Edición por fila (key = whatsapp normalizado)
+  const [editingId, setEditingId] = useState<string | 'new' | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editDireccion, setEditDireccion] = useState('');
+  const [editDomicilio, setEditDomicilio] = useState<number>(0);
+  const [editNotas, setEditNotas] = useState('');
+
+  // Creación
+  const [newWhatsapp, setNewWhatsapp] = useState('');
+  const [newNombre, setNewNombre] = useState('');
+  const [newDireccion, setNewDireccion] = useState('');
+  const [newDomicilio, setNewDomicilio] = useState<number>(0);
+  const [newNotas, setNewNotas] = useState('');
+
+  const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(CLIENTES_API);
@@ -53,54 +56,71 @@ const AdminClientes: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchItems();
     const t = setInterval(fetchItems, 20000);
     return () => clearInterval(t);
-  }, []);
+  }, [fetchItems]);
 
+  // Filtrado
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(i => {
+      const n = (i.nombre || '').toLowerCase();
+      const w = String(i.whatsapp || '');
+      const d = (i.direccion || '').toLowerCase();
+      return n.includes(q) || w.includes(q) || d.includes(q);
+    });
+  }, [items, query]);
+
+  // Acciones
   const startNew = () => {
     setEditingId('new');
-    setNombre('');
-    setWhatsapp('');
-    setDireccion('');
-    setDomicilio(0);
-    setNotas('');
+    setNewWhatsapp('');
+    setNewNombre('');
+    setNewDireccion('');
+    setNewDomicilio(0);
+    setNewNotas('');
   };
 
   const startEdit = (c: Cliente) => {
-    setEditingId(c.row_number ?? null);
-    setNombre(c.nombre || '');
-    setWhatsapp(String(c.whatsapp ?? ''));
-    setDireccion(c.direccion || '');
-    setDomicilio(Number(c.domicilio) || 0);
-    setNotas(c.notas || '');
+    const key = normalizeWhatsApp(String(c.whatsapp ?? ''));
+    setEditingId(key);
+    setEditNombre(c.nombre || '');
+    setEditDireccion(c.direccion || '');
+    setEditDomicilio(Number(c.domicilio) || 0);
+    setEditNotas(c.notas || '');
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setNombre('');
-    setWhatsapp('');
-    setDireccion('');
-    setDomicilio(0);
-    setNotas('');
+    setEditNombre('');
+    setEditDireccion('');
+    setEditDomicilio(0);
+    setEditNotas('');
+    setNewWhatsapp('');
+    setNewNombre('');
+    setNewDireccion('');
+    setNewDomicilio(0);
+    setNewNotas('');
   };
 
-  const save = async () => {
+  // Guardar cambios en cliente existente (whatsapp = key, NO editable)
+  const saveExisting = async (whatsappKey: string) => {
     try {
-      const wpp = normalizeWhatsApp(whatsapp);
-      if (!wpp) {
-        alert('El WhatsApp es obligatorio y debe ser válido.');
+      if (!whatsappKey) {
+        alert('WhatsApp inválido.');
         return;
       }
       const payload = {
-        whatsapp: Number(wpp),              // {{ $json.body.whatsapp }}
-        nombre: (nombre || '').trim(),      // {{ $json.body.nombre }}
-        direccion: (direccion || '').trim(),// {{ $json.body.direccion }}
-        domicilio: Number(domicilio) || 0,  // {{ $json.body.domicilio }}
-        notas: (notas || '').trim(),        // {{ $json.body.notas }}
+        whatsapp: Number(whatsappKey),          // clave (no se cambia)
+        nombre: (editNombre || '').trim(),
+        direccion: (editDireccion || '').trim(),
+        domicilio: Number(editDomicilio) || 0,
+        notas: (editNotas || '').trim(),
       };
       const res = await fetch(CLIENTES_API, {
         method: 'POST',
@@ -116,33 +136,72 @@ const AdminClientes: React.FC = () => {
     }
   };
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(i => {
-      const n = (i.nombre || '').toLowerCase();
-      const w = String(i.whatsapp || '');
-      return n.includes(q) || w.includes(q);
-    });
-  }, [items, query]);
+  // Guardar nuevo cliente (aquí sí se ingresa whatsapp)
+  const saveNew = async () => {
+    try {
+      const wpp = normalizeWhatsApp(newWhatsapp);
+      if (!wpp || wpp.length < 12) {
+        alert('El WhatsApp es obligatorio y debe ser válido: 57 + 10 dígitos.');
+        return;
+      }
+      // Evitar duplicados por whatsapp
+      const exists = items.some(i => normalizeWhatsApp(String(i.whatsapp ?? '')) === wpp);
+      if (exists) {
+        alert('Ese WhatsApp ya existe. Edita ese cliente.');
+        return;
+      }
+      const payload = {
+        whatsapp: Number(wpp),
+        nombre: (newNombre || '').trim(),
+        direccion: (newDireccion || '').trim(),
+        domicilio: Number(newDomicilio) || 0,
+        notas: (newNotas || '').trim(),
+      };
+      const res = await fetch(CLIENTES_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      cancelEdit();
+      fetchItems();
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo crear el cliente.');
+    }
+  };
+
+  // Enter/Esc en edición
+  const onEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, whatsappKey?: string) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (editingId === 'new') saveNew();
+      else if (whatsappKey) saveExisting(whatsappKey);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    }
+  };
 
   return (
     <div className="min-w-0">
-      {/* Barra de acciones */}
-      <div className="sticky top-24 z-20 bg-white/80 backdrop-blur border-b border-gray-100">
+      {/* Barra de acciones sticky (siempre visible) */}
+      <div className="sticky top-24 z-20 bg-white/90 backdrop-blur border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <h2 className="text-xl font-bold text-gray-900">Clientes</h2>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative">
+
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:flex-none min-w-[260px]">
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Buscar por nombre o WhatsApp…"
-                  className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm pl-9"
+                  placeholder="Buscar por nombre, WhatsApp o dirección…"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm pl-9"
                 />
-                <Search size={16} className="absolute left-3 top-2.5 text-gray-500" />
+                <Search size={16} className="pointer-events-none absolute left-3 top-2.5 text-gray-500" />
               </div>
+
               <button
                 onClick={fetchItems}
                 className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
@@ -150,6 +209,7 @@ const AdminClientes: React.FC = () => {
                 <RefreshCw size={16} />
                 Actualizar
               </button>
+
               <button
                 onClick={startNew}
                 className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2"
@@ -162,195 +222,238 @@ const AdminClientes: React.FC = () => {
         </div>
       </div>
 
-      {/* Form nuevo */}
-      {editingId === 'new' && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
-          <h3 className="font-bold text-gray-900 mb-3">Crear cliente</h3>
-          <div className="grid md:grid-cols-5 gap-3">
-            <div className="md:col-span-1">
-              <label className="block text-xs text-gray-600 mb-1">WhatsApp (57 + 10 dígitos)</label>
-              <input
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="+57 3xx xxx xxxx"
-              />
-            </div>
-            <div className="md:col-span-1">
-              <label className="block text-xs text-gray-600 mb-1">Nombre</label>
-              <input
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Nombre"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs text-gray-600 mb-1">Dirección</label>
-              <input
-                value={direccion}
-                onChange={(e) => setDireccion(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Dirección"
-              />
-            </div>
-            <div className="md:col-span-1">
-              <label className="block text-xs text-gray-600 mb-1">Domicilio</label>
-              <input
-                type="number"
-                value={domicilio}
-                onChange={(e) => setDomicilio(parseInt(e.target.value || '0', 10))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="0"
-              />
-            </div>
-            <div className="md:col-span-5">
-              <label className="block text-xs text-gray-600 mb-1">Notas</label>
-              <textarea
-                value={notas}
-                onChange={(e) => setNotas(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                rows={2}
-                placeholder="Observaciones del cliente"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2 mt-3">
-            <button onClick={save} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm">
-              <Save size={16} /> Guardar
-            </button>
-            <button onClick={cancelEdit} className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2">
-              <X size={16} /> Cancelar
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Tabla responsive */}
+      <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 sticky top-[calc(6rem+1px)] z-10">
+              <tr>
+                <th className="text-left px-3 py-3 font-semibold text-gray-700">WhatsApp</th>
+                <th className="text-left px-3 py-3 font-semibold text-gray-700">Nombre</th>
+                <th className="text-left px-3 py-3 font-semibold text-gray-700">Dirección</th>
+                <th className="text-left px-3 py-3 font-semibold text-gray-700">Domicilio</th>
+                <th className="text-left px-3 py-3 font-semibold text-gray-700">Notas</th>
+                <th className="px-3 py-3"></th>
+              </tr>
+            </thead>
 
-      {/* Lista */}
-      <div className="grid gap-4">
-        {loading && <div className="text-sm text-gray-500">Cargando…</div>}
-        {filtered.map((c) => {
-          const isEditing = editingId === c.row_number;
-          const wpp = normalizeWhatsApp(String(c.whatsapp ?? ''));
-          return (
-            <div key={c.row_number ?? `${c.whatsapp}-${c.nombre}`} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="font-bold text-gray-900">Cliente</h3>
-                  <p className="text-sm text-gray-600">#{c.row_number ?? '-'}</p>
-                </div>
-                {!isEditing ? (
-                  <button
-                    onClick={() => startEdit(c)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2"
-                  >
-                    <Pencil size={16} /> Editar
-                  </button>
-                ) : (
-                  <div className="flex gap-2 flex-wrap">
-                    <button onClick={save} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm">
-                      <Save size={16} /> Guardar
-                    </button>
-                    <button onClick={cancelEdit} className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2">
-                      <X size={16} /> Cancelar
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {!isEditing ? (
-                <div className="grid md:grid-cols-5 gap-4 mt-4">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">WhatsApp</p>
-                    {wpp ? (
-                      <a
-                        href={`https://wa.me/${encodeURIComponent(wpp)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline break-words inline-flex items-center gap-1"
-                        title="Abrir chat de WhatsApp"
-                      >
-                        <MessageSquareText size={14} /> {wpp}
-                      </a>
-                    ) : (
-                      <p className="text-gray-500">—</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Nombre</p>
-                    <p className="font-medium break-words">{c.nombre || '—'}</p>
-                  </div>
-                  <div className="md:col-span-2">
-                    <p className="text-sm text-gray-600 mb-1">Dirección</p>
-                    <p className="font-medium break-words">{c.direccion || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Domicilio</p>
-                    <p className="font-medium">
-                      {c.domicilio !== '' && c.domicilio !== null && c.domicilio !== undefined
-                        ? `$${Number(c.domicilio || 0).toLocaleString('es-CO')}`
-                        : '—'}
+            <tbody className="divide-y divide-gray-100">
+              {/* Fila creación */}
+              {editingId === 'new' && (
+                <tr className="bg-amber-50/50">
+                  <td className="px-3 py-2 align-middle">
+                    <input
+                      value={newWhatsapp}
+                      onChange={(e) => setNewWhatsapp(e.target.value)}
+                      onKeyDown={(e) => onEditKeyDown(e)}
+                      placeholder="+57 3xx xxx xxxx"
+                      className="w-44 md:w-56 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                    />
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Guardado como: <strong>{normalizeWhatsApp(newWhatsapp) || '—'}</strong>
                     </p>
-                  </div>
-                  {c.notas ? (
-                    <div className="md:col-span-5">
-                      <p className="text-sm text-gray-600 mb-1">Notas</p>
-                      <p className="font-medium break-words">{c.notas}</p>
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="grid md:grid-cols-5 gap-3 mt-4">
-                  <div className="md:col-span-1">
-                    <label className="block text-xs text-gray-600 mb-1">WhatsApp (57 + 10 dígitos)</label>
+                  </td>
+                  <td className="px-3 py-2 align-middle">
                     <input
-                      value={whatsapp}
-                      onChange={(e) => setWhatsapp(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={newNombre}
+                      onChange={(e) => setNewNombre(e.target.value)}
+                      onKeyDown={(e) => onEditKeyDown(e)}
+                      className="w-40 md:w-56 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      placeholder="Nombre"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Guardado como: <strong>{normalizeWhatsApp(whatsapp) || '—'}</strong>
-                    </p>
-                  </div>
-                  <div className="md:col-span-1">
-                    <label className="block text-xs text-gray-600 mb-1">Nombre</label>
+                  </td>
+                  <td className="px-3 py-2 align-middle">
                     <input
-                      value={nombre}
-                      onChange={(e) => setNombre(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={newDireccion}
+                      onChange={(e) => setNewDireccion(e.target.value)}
+                      onKeyDown={(e) => onEditKeyDown(e)}
+                      className="w-56 md:w-80 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      placeholder="Dirección"
                     />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs text-gray-600 mb-1">Dirección</label>
-                    <input
-                      value={direccion}
-                      onChange={(e) => setDireccion(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                  <div className="md:col-span-1">
-                    <label className="block text-xs text-gray-600 mb-1">Domicilio</label>
+                  </td>
+                  <td className="px-3 py-2 align-middle">
                     <input
                       type="number"
-                      value={domicilio}
-                      onChange={(e) => setDomicilio(parseInt(e.target.value || '0', 10))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={newDomicilio}
+                      onChange={(e) => setNewDomicilio(parseInt(e.target.value || '0', 10))}
+                      onKeyDown={(e) => onEditKeyDown(e)}
+                      className="w-32 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      placeholder="0"
                     />
-                  </div>
-                  <div className="md:col-span-5">
-                    <label className="block text-xs text-gray-600 mb-1">Notas</label>
+                  </td>
+                  <td className="px-3 py-2 align-middle">
                     <textarea
-                      value={notas}
-                      onChange={(e) => setNotas(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      rows={2}
+                      value={newNotas}
+                      onChange={(e) => setNewNotas(e.target.value)}
+                      onKeyDown={(e) => onEditKeyDown(e)}
+                      className="w-56 md:w-80 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      rows={1}
+                      placeholder="Observaciones"
                     />
-                  </div>
-                </div>
+                  </td>
+                  <td className="px-3 py-2 align-middle">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveNew}
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1"
+                        title="Guardar"
+                      >
+                        <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
+                        title="Cancelar"
+                      >
+                        <X size={16} /> <span className="hidden sm:inline">Cancelar</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               )}
-            </div>
-          );
-        })}
+
+              {/* Cargando */}
+              {loading && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-3 text-gray-500">Cargando…</td>
+                </tr>
+              )}
+
+              {/* Datos */}
+              {filtered.map((c) => {
+                const key = normalizeWhatsApp(String(c.whatsapp ?? ''));
+                const isEditing = editingId === key;
+
+                return (
+                  <tr key={key || `${c.row_number}-${c.nombre}`}>
+                    {/* WhatsApp (NO editable) */}
+                    <td className="px-3 py-3 align-middle">
+                      {key ? (
+                        <a
+                          href={`https://wa.me/${encodeURIComponent(key)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline inline-flex items-center gap-1 break-all"
+                          title="Abrir chat de WhatsApp"
+                        >
+                          <MessageSquareText size={14} /> {key}
+                        </a>
+                      ) : (
+                        <span className="text-gray-500">—</span>
+                      )}
+                    </td>
+
+                    {/* Nombre */}
+                    <td className="px-3 py-3 align-middle">
+                      {!isEditing ? (
+                        <span className="font-medium break-words">{c.nombre || '—'}</span>
+                      ) : (
+                        <input
+                          value={editNombre}
+                          onChange={(e) => setEditNombre(e.target.value)}
+                          onKeyDown={(e) => onEditKeyDown(e, key)}
+                          className="w-40 md:w-56 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                          autoFocus
+                        />
+                      )}
+                    </td>
+
+                    {/* Dirección */}
+                    <td className="px-3 py-3 align-middle">
+                      {!isEditing ? (
+                        <span className="break-words">{c.direccion || '—'}</span>
+                      ) : (
+                        <input
+                          value={editDireccion}
+                          onChange={(e) => setEditDireccion(e.target.value)}
+                          onKeyDown={(e) => onEditKeyDown(e, key)}
+                          className="w-56 md:w-80 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                        />
+                      )}
+                    </td>
+
+                    {/* Domicilio */}
+                    <td className="px-3 py-3 align-middle">
+                      {!isEditing ? (
+                        <span className="tabular-nums font-medium">
+                          {c.domicilio !== '' && c.domicilio !== null && c.domicilio !== undefined
+                            ? `$${Number(c.domicilio || 0).toLocaleString('es-CO')}`
+                            : '—'}
+                        </span>
+                      ) : (
+                        <input
+                          type="number"
+                          value={editDomicilio}
+                          onChange={(e) => setEditDomicilio(parseInt(e.target.value || '0', 10))}
+                          onKeyDown={(e) => onEditKeyDown(e, key)}
+                          className="w-32 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                        />
+                      )}
+                    </td>
+
+                    {/* Notas */}
+                    <td className="px-3 py-3 align-middle">
+                      {!isEditing ? (
+                        <span className="break-words">{c.notas || '—'}</span>
+                      ) : (
+                        <textarea
+                          value={editNotas}
+                          onChange={(e) => setEditNotas(e.target.value)}
+                          onKeyDown={(e) => onEditKeyDown(e, key)}
+                          className="w-56 md:w-80 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                          rows={1}
+                        />
+                      )}
+                    </td>
+
+                    {/* Acciones */}
+                    <td className="px-3 py-3 align-middle">
+                      {!isEditing ? (
+                        <button
+                          onClick={() => startEdit(c)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
+                          title="Editar"
+                        >
+                          <Pencil size={16} /> <span className="hidden sm:inline">Editar</span>
+                        </button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => saveExisting(key)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1"
+                            title="Guardar"
+                          >
+                            <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
+                            title="Cancelar"
+                          >
+                            <X size={16} /> <span className="hidden sm:inline">Cancelar</span>
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {/* Sin resultados */}
+              {!loading && filtered.length === 0 && editingId !== 'new' && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-gray-500">
+                    No hay clientes que coincidan con la búsqueda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="mt-2 text-xs text-gray-500">
+          Consejo: toca <span className="font-medium">Editar</span>, modifica los campos y presiona <kbd className="px-1 border rounded">Enter</kbd> para guardar o <kbd className="px-1 border rounded">Esc</kbd> para cancelar. El <strong>WhatsApp no es editable</strong>.
+        </p>
       </div>
     </div>
   );
