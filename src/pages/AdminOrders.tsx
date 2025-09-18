@@ -218,24 +218,9 @@ const buildEscposFromLines = (lines: string[]): number[] => {
 
 const isAndroid = (): boolean => /Android/i.test(navigator.userAgent || '');
 
-/** === NUEVO: enviar HTML (idéntico al PC) a RawBT mediante data URI === */
-const sendHtmlToRawBT = async (fullHtml: string): Promise<void> => {
-  if (!isAndroid()) throw new Error('Solo Android con RawBT.');
-  // btoa espera Latin1: convertimos UTF-16 -> UTF-8 seguro
-  const toBase64 = (s: string) => btoa(unescape(encodeURIComponent(s)));
-  const base64 = toBase64(fullHtml);
-  const url = `rawbt:data:text/html;base64,${base64}`;
-  try {
-    (window as any).location.href = url;
-    return;
-  } catch {}
-  try {
-    const a = document.createElement('a');
-    a.href = url; a.rel = 'noopener noreferrer';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    return;
-  } catch {}
-  throw new Error('No se pudo invocar RawBT con HTML.');
+/** === (Dejado por compatibilidad, pero NO se usa para evitar Premium) === */
+const sendHtmlToRawBT = async (_fullHtml: string): Promise<void> => {
+  throw new Error('Deshabilitado para evitar requisito Premium de RawBT.');
 };
 
 const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
@@ -432,7 +417,7 @@ const OrdersTab: React.FC = () => {
     }
   };
 
-  /** Impresión y marcar impreso con payload completo */
+  /** Impresión y marcar impreso SIN RawBT Premium (solo ESC/POS en Android) */
   const printOrder = async (order: Order) => {
     const customerName = sanitizeForTicket(order.nombre || 'Cliente');
     const customerPhone = cleanPhone(order.numero);
@@ -441,7 +426,7 @@ const OrdersTab: React.FC = () => {
     const domicilio = order.valor_domicilio || 0;
     const total = subtotal + domicilio;
 
-    // --- ESC/POS: se construyen líneas monoespaciadas (bien para RawBT como 2ª opción) ---
+    // --- ESC/POS: se construyen líneas monoespaciadas ---
     const before: string[] = [];
     const detail: string[] = [];
     const after:  string[] = [];
@@ -476,7 +461,36 @@ const OrdersTab: React.FC = () => {
     after.push(center('¡Gracias por su compra!'));
     after.push(repeat('=', COLS));
 
-    // ===== HTML (idéntico al PC) =====
+    // ===== ANDROID -> SOLO ESC/POS (gratis) =====
+    if (isAndroid()) {
+      try {
+        // 1) ESC/POS con secciones (detalles más grandes)
+        await sendToRawBTSections(before, detail, after);
+
+        const updated = { ...order, estado: 'impreso' };
+        setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
+        await postOrderFull(order, { estado: 'impreso' });
+        return;
+      } catch (e1) {
+        console.warn('ESC/POS secciones falló, probando ESC/POS simple:', (e1 as any)?.message);
+      }
+
+      try {
+        // 2) Fallback: ESC/POS simple (mismo layout monoespaciado)
+        const allLines = [...before, ...detail, ...after];
+        await sendToRawBT(allLines);
+
+        const updated = { ...order, estado: 'impreso' };
+        setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
+        await postOrderFull(order, { estado: 'impreso' });
+        return;
+      } catch (e2) {
+        console.warn('ESC/POS simple falló, usando ventana del navegador:', (e2 as any)?.message);
+        // si llega aquí, intentamos PC como último recurso
+      }
+    }
+
+    // ===== PC / Último recurso: HTML en ventana (como ya lo tenías) =====
     const esc = (s: string) =>
       (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -533,7 +547,6 @@ const OrdersTab: React.FC = () => {
       </div>
     `;
 
-    // Documento HTML completo (para RawBT y para ventana del navegador)
     const fullHtml = `
       <!doctype html>
       <html>
@@ -628,7 +641,6 @@ const OrdersTab: React.FC = () => {
         <body>
           ${innerHtml}
           <script>
-            // Si se abre en ventana normal (PC), imprimimos y cerramos
             try {
               window.onload = function() {
                 if (typeof window.print === 'function') {
@@ -642,31 +654,6 @@ const OrdersTab: React.FC = () => {
       </html>
     `;
 
-    // ===== 1) ANDROID -> RawBT con HTML idéntico al PC =====
-    if (isAndroid()) {
-      try {
-        await sendHtmlToRawBT(fullHtml);
-        const updated = { ...order, estado: 'impreso' };
-        setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
-        await postOrderFull(order, { estado: 'impreso' });
-        return;
-      } catch (err: any) {
-        console.warn('RawBT HTML no disponible, probando ESC/POS:', err?.message);
-      }
-
-      // ===== 2) ANDROID fallback -> ESC/POS secciones =====
-      try {
-        await sendToRawBTSections(before, detail, after);
-        const updated = { ...order, estado: 'impreso' };
-        setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
-        await postOrderFull(order, { estado: 'impreso' });
-        return;
-      } catch (err: any) {
-        console.warn('RawBT ESC/POS no disponible, usando ventana:', err?.message);
-      }
-    }
-
-    // ===== 3) Ventana del navegador (PC o último recurso) =====
     const printWindow = window.open('', '_blank', 'width=380,height=700');
     if (printWindow) {
       printWindow.document.write(fullHtml);
