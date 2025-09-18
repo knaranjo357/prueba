@@ -198,8 +198,8 @@ const DETAILS_FONT_PX = 18;  // items
 const LINE_HEIGHT = 1.32;    // ajuste fino para evitar saltos/overflow visual
 
 /** ESC/POS — multiplicadores (no son px; solo afectan RawBT) */
-const GENERAL_HEIGHT_MULT = 2;
-const DETAILS_HEIGHT_MULT = 3;
+const GENERAL_HEIGHT_MULT = 1;
+const DETAILS_HEIGHT_MULT = 2;
 const GENERAL_WIDTH_MULT  = 1;
 const DETAILS_WIDTH_MULT  = 1;
 
