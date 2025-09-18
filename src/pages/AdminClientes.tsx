@@ -75,7 +75,7 @@ const AdminClientes: React.FC = () => {
     if (!q) return items;
     return items.filter(i => {
       const n = (i.nombre || '').toLowerCase();
-      const w = String(i.whatsapp || '');
+      const w = String(i.whatsapp ?? '');
       const d = (i.direccion || '').toLowerCase();
       return n.includes(q) || w.includes(q) || d.includes(q);
     });
@@ -146,7 +146,7 @@ const AdminClientes: React.FC = () => {
     }
   };
 
-  // Guardar nuevo cliente (aquí sí se ingresa whatsapp)
+  // Guardar nuevo cliente
   const saveNew = async () => {
     if (saving) return;
     try {
@@ -156,7 +156,6 @@ const AdminClientes: React.FC = () => {
         alert('El WhatsApp es obligatorio y debe ser válido: 57 + 10 dígitos.');
         return;
       }
-      // Evitar duplicados por whatsapp
       const exists = items.some(i => normalizeWhatsApp(String(i.whatsapp ?? '')) === wpp);
       if (exists) {
         alert('Ese WhatsApp ya existe. Edita ese cliente.');
@@ -247,15 +246,27 @@ const AdminClientes: React.FC = () => {
       {/* Tabla responsive */}
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
+          {/* table-fixed + colgroup para que no se rompa la UI al buscar */}
+          <table className="min-w-full text-sm table-fixed">
+            <colgroup>
+              <col className="w-20" />            {/* Acciones */}
+              <col className="w-[14ch]" />        {/* WhatsApp (12 dígitos + ~2 de margen) */}
+              <col className="w-[22ch]" />        {/* Nombre */}
+              <col className="w-[30ch]" />        {/* Dirección */}
+              <col className="w-[14ch]" />        {/* Domicilio */}
+              <col />                              {/* Notas (flexible) */}
+            </colgroup>
+
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
+                <th className="px-3 py-3 font-semibold text-gray-700 text-left">
+                  <span className="sr-only">Acciones</span>
+                </th>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700">WhatsApp</th>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700">Nombre</th>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700">Dirección</th>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700">Domicilio</th>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700">Notas</th>
-                <th className="px-3 py-3"></th>
               </tr>
             </thead>
 
@@ -263,44 +274,73 @@ const AdminClientes: React.FC = () => {
               {/* Fila creación */}
               {editingId === 'new' && (
                 <tr className="bg-amber-50/50">
+                  {/* Acciones (Guardar / Cancelar) */}
+                  <td className="px-3 py-2 align-middle">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={saveNew}
+                        className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg font-medium disabled:opacity-60"
+                        title="Guardar"
+                        aria-label="Guardar"
+                        disabled={saving}
+                      >
+                        <Save size={16} />
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="border border-gray-300 rounded-lg p-2 bg-white"
+                        title="Cancelar"
+                        aria-label="Cancelar"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </td>
+
+                  {/* WhatsApp (input un poco más ancho) */}
                   <td className="px-3 py-2 align-middle">
                     <input
                       value={newWhatsapp}
                       onChange={(e) => setNewWhatsapp(e.target.value)}
                       onKeyDown={(e) => onEditKeyDown(e)}
                       placeholder="+57 3xx xxx xxxx"
-                      className="w-44 md:w-56 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      className="w-[18ch] md:w-[22ch] max-w-full px-3 py-2 border border-amber-300 rounded-md font-mono"
                       aria-label="WhatsApp nuevo"
                       autoComplete="off"
                       inputMode="numeric"
                     />
                     <p className="text-[11px] text-gray-500 mt-1">
-                      Guardado como:{' '}
-                      <strong>{normalizeWhatsApp(newWhatsapp) || '—'}</strong>
+                      Guardado como: <strong className="font-mono">{normalizeWhatsApp(newWhatsapp) || '—'}</strong>
                     </p>
                   </td>
+
+                  {/* Nombre */}
                   <td className="px-3 py-2 align-middle">
                     <input
                       value={newNombre}
                       onChange={(e) => setNewNombre(e.target.value)}
                       onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-40 md:w-56 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      className="w-full px-3 py-2 border border-amber-300 rounded-md"
                       placeholder="Nombre"
                       aria-label="Nombre nuevo"
                       autoComplete="off"
                     />
                   </td>
+
+                  {/* Dirección */}
                   <td className="px-3 py-2 align-middle">
                     <input
                       value={newDireccion}
                       onChange={(e) => setNewDireccion(e.target.value)}
                       onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-56 md:w-80 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      className="w-full px-3 py-2 border border-amber-300 rounded-md"
                       placeholder="Dirección"
                       aria-label="Dirección nueva"
                       autoComplete="off"
                     />
                   </td>
+
+                  {/* Domicilio */}
                   <td className="px-3 py-2 align-middle">
                     <input
                       type="number"
@@ -308,40 +348,23 @@ const AdminClientes: React.FC = () => {
                       value={Number.isFinite(newDomicilio) ? newDomicilio : 0}
                       onChange={(e) => setNewDomicilio(parseInt(e.target.value || '0', 10))}
                       onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-32 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      className="w-full px-3 py-2 border border-amber-300 rounded-md"
                       placeholder="0"
                       aria-label="Domicilio nuevo"
                     />
                   </td>
+
+                  {/* Notas */}
                   <td className="px-3 py-2 align-middle">
                     <textarea
                       value={newNotas}
                       onChange={(e) => setNewNotas(e.target.value)}
                       onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-56 md:w-80 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      className="w-full px-3 py-2 border border-amber-300 rounded-md"
                       rows={1}
                       placeholder="Observaciones"
                       aria-label="Notas nuevas"
                     />
-                  </td>
-                  <td className="px-3 py-2 align-middle">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={saveNew}
-                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1 disabled:opacity-60"
-                        title="Guardar"
-                        disabled={saving}
-                      >
-                        <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
-                        title="Cancelar"
-                      >
-                        <X size={16} /> <span className="hidden sm:inline">Cancelar</span>
-                      </button>
-                    </div>
                   </td>
                 </tr>
               )}
@@ -360,18 +383,53 @@ const AdminClientes: React.FC = () => {
                 const isEditing = editingId === key;
 
                 return (
-                  <tr key={idKey}>
-                    {/* WhatsApp (NO editable) */}
+                  <tr key={idKey} className="align-top">
+                    {/* Acciones (ícono Editar a la izquierda de WhatsApp) */}
+                    <td className="px-3 py-3">
+                      {!isEditing ? (
+                        <button
+                          onClick={() => startEdit(c)}
+                          className="border border-gray-300 rounded-lg p-2 bg-white"
+                          title="Editar"
+                          aria-label="Editar"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => saveExisting(key)}
+                            className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg font-medium disabled:opacity-60"
+                            title="Guardar"
+                            aria-label="Guardar"
+                            disabled={saving}
+                          >
+                            <Save size={16} />
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="border border-gray-300 rounded-lg p-2 bg-white"
+                            title="Cancelar"
+                            aria-label="Cancelar"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* WhatsApp (dos letras más ancho + sin romper diseño) */}
                     <td className="px-3 py-3 align-middle">
                       {key ? (
                         <a
                           href={`https://wa.me/${encodeURIComponent(key)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline inline-flex items-center gap-1 break-all"
+                          className="text-blue-600 hover:underline inline-flex items-center gap-1 font-mono tabular-nums whitespace-nowrap"
                           title="Abrir chat de WhatsApp"
                         >
-                          <MessageSquareText size={14} /> {key}
+                          <MessageSquareText size={14} />
+                          <span className="inline-block w-[14ch] truncate">{key}</span>
                         </a>
                       ) : (
                         <span className="text-gray-500">—</span>
@@ -379,15 +437,15 @@ const AdminClientes: React.FC = () => {
                     </td>
 
                     {/* Nombre */}
-                    <td className="px-3 py-3 align-middle">
+                    <td className="px-3 py-3 align-middle min-w-0">
                       {!isEditing ? (
-                        <span className="font-medium break-words">{c.nombre || '—'}</span>
+                        <span className="font-medium block truncate">{c.nombre || '—'}</span>
                       ) : (
                         <input
                           value={editNombre}
                           onChange={(e) => setEditNombre(e.target.value)}
                           onKeyDown={(e) => onEditKeyDown(e, key)}
-                          className="w-40 md:w-56 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
                           autoFocus
                           aria-label="Editar nombre"
                           autoComplete="off"
@@ -396,15 +454,15 @@ const AdminClientes: React.FC = () => {
                     </td>
 
                     {/* Dirección */}
-                    <td className="px-3 py-3 align-middle">
+                    <td className="px-3 py-3 align-middle min-w-0">
                       {!isEditing ? (
-                        <span className="break-words">{c.direccion || '—'}</span>
+                        <span className="block truncate">{c.direccion || '—'}</span>
                       ) : (
                         <input
                           value={editDireccion}
                           onChange={(e) => setEditDireccion(e.target.value)}
                           onKeyDown={(e) => onEditKeyDown(e, key)}
-                          className="w-56 md:w-80 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
                           aria-label="Editar dirección"
                           autoComplete="off"
                         />
@@ -426,56 +484,25 @@ const AdminClientes: React.FC = () => {
                           value={Number.isFinite(editDomicilio) ? editDomicilio : 0}
                           onChange={(e) => setEditDomicilio(parseInt(e.target.value || '0', 10))}
                           onKeyDown={(e) => onEditKeyDown(e, key)}
-                          className="w-32 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
                           aria-label="Editar domicilio"
                         />
                       )}
                     </td>
 
                     {/* Notas */}
-                    <td className="px-3 py-3 align-middle">
+                    <td className="px-3 py-3 align-middle min-w-0">
                       {!isEditing ? (
-                        <span className="break-words">{c.notas || '—'}</span>
+                        <span className="block truncate">{c.notas || '—'}</span>
                       ) : (
                         <textarea
                           value={editNotas}
                           onChange={(e) => setEditNotas(e.target.value)}
                           onKeyDown={(e) => onEditKeyDown(e, key)}
-                          className="w-56 md:w-80 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
                           rows={1}
                           aria-label="Editar notas"
                         />
-                      )}
-                    </td>
-
-                    {/* Acciones */}
-                    <td className="px-3 py-3 align-middle">
-                      {!isEditing ? (
-                        <button
-                          onClick={() => startEdit(c)}
-                          className="border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
-                          title="Editar"
-                        >
-                          <Pencil size={16} /> <span className="hidden sm:inline">Editar</span>
-                        </button>
-                      ) : (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => saveExisting(key)}
-                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1 disabled:opacity-60"
-                            title="Guardar"
-                            disabled={saving}
-                          >
-                            <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            className="border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
-                            title="Cancelar"
-                          >
-                            <X size={16} /> <span className="hidden sm:inline">Cancelar</span>
-                          </button>
-                        </div>
                       )}
                     </td>
                   </tr>
@@ -495,7 +522,7 @@ const AdminClientes: React.FC = () => {
         </div>
 
         <p className="mt-2 text-xs text-gray-500">
-          Consejo: toca <span className="font-medium">Editar</span>, modifica los campos y presiona{' '}
+          Consejo: toca <span className="font-medium">Editar</span> (ícono ✏️), modifica y presiona{' '}
           <kbd className="px-1 border rounded">Enter</kbd> para guardar o{' '}
           <kbd className="px-1 border rounded">Esc</kbd> para cancelar. El <strong>WhatsApp no es editable</strong>.
         </p>
