@@ -8,11 +8,13 @@ interface Domicilio {
 }
 
 const DOMICILIOS_API = 'https://n8n.alliasoft.com/webhook/luis-res/domicilios';
+const currencyCO = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 
 const AdminDomicilios: React.FC = () => {
   const [items, setItems] = useState<Domicilio[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Ediciones
   const [editingId, setEditingId] = useState<string | 'new' | null>(null); // usamos "barrio" como key
@@ -23,7 +25,7 @@ const AdminDomicilios: React.FC = () => {
   const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(DOMICILIOS_API);
+      const res = await fetch(DOMICILIOS_API, { cache: 'no-store' });
       const data = await res.json();
       if (Array.isArray(data)) setItems(data as Domicilio[]);
     } catch (e) {
@@ -64,13 +66,16 @@ const AdminDomicilios: React.FC = () => {
     setEditPrecio(0);
     setNewBarrio('');
     setNewPrecio(0);
+    setSaving(false);
   };
 
   const saveExisting = async (barrioKey: string) => {
+    if (saving) return;
     try {
+      setSaving(true);
       const payload = {
-        barrio: barrioKey,               // clave (no editable)
-        precio: Number(editPrecio) || 0, // nuevo precio
+        barrio: barrioKey,                              // clave (no editable)
+        precio: Number.isFinite(editPrecio) ? editPrecio : 0, // nuevo precio
       };
       const res = await fetch(DOMICILIOS_API, {
         method: 'POST',
@@ -83,25 +88,29 @@ const AdminDomicilios: React.FC = () => {
     } catch (e) {
       console.error(e);
       alert('No se pudo guardar el precio.');
+    } finally {
+      setSaving(false);
     }
   };
 
   const saveNew = async () => {
+    if (saving) return;
     try {
+      setSaving(true);
       const b = newBarrio.trim();
       if (!b) {
         alert('El barrio es obligatorio.');
         return;
       }
       // Evitar duplicados por nombre (client-side)
-      const exists = items.some(i => i.barrio.trim().toLowerCase() === b.toLowerCase());
+      const exists = items.some(i => (i.barrio || '').trim().toLowerCase() === b.toLowerCase());
       if (exists) {
         alert('Ese barrio ya existe. Edita su precio directamente.');
         return;
       }
       const payload = {
         barrio: b,
-        precio: Number(newPrecio) || 0,
+        precio: Number.isFinite(newPrecio) ? newPrecio : 0,
       };
       const res = await fetch(DOMICILIOS_API, {
         method: 'POST',
@@ -114,12 +123,14 @@ const AdminDomicilios: React.FC = () => {
     } catch (e) {
       console.error(e);
       alert('No se pudo crear el barrio.');
+    } finally {
+      setSaving(false);
     }
   };
 
   // Manejo de teclado para Enter/Esc al editar
   const onEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, barrioKey?: string) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (editingId === 'new') saveNew();
       else if (barrioKey) saveExisting(barrioKey);
@@ -144,13 +155,17 @@ const AdminDomicilios: React.FC = () => {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Buscar barrio…"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm pl-9"
+                  aria-label="Buscar barrio"
+                  autoComplete="off"
                 />
                 <Search size={16} className="pointer-events-none absolute left-3 top-2.5 text-gray-500" />
               </div>
 
               <button
                 onClick={fetchItems}
-                className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
+                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-60"
+                disabled={loading}
+                title="Actualizar"
               >
                 <RefreshCw size={16} />
                 Actualizar
@@ -159,6 +174,7 @@ const AdminDomicilios: React.FC = () => {
               <button
                 onClick={startNew}
                 className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2"
+                title="Nuevo barrio"
               >
                 <Plus size={16} />
                 Nuevo barrio
@@ -172,7 +188,7 @@ const AdminDomicilios: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 sticky top-[calc(6rem+1px)] md:top-[calc(6rem+1px)] z-10">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700 w-[60%]">Barrio</th>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700 w-[40%]">Precio</th>
@@ -191,11 +207,14 @@ const AdminDomicilios: React.FC = () => {
                         onKeyDown={(e) => onEditKeyDown(e)}
                         placeholder="Nombre del barrio"
                         className="w-full md:w-80 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                        aria-label="Nombre del barrio nuevo"
+                        autoComplete="off"
                       />
                       <button
                         onClick={saveNew}
-                        className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1"
+                        className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1 disabled:opacity-60"
                         title="Guardar nuevo"
+                        disabled={saving}
                       >
                         <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
                       </button>
@@ -211,11 +230,13 @@ const AdminDomicilios: React.FC = () => {
                   <td className="px-3 py-2 align-middle">
                     <input
                       type="number"
-                      value={newPrecio}
+                      min={0}
+                      value={Number.isFinite(newPrecio) ? newPrecio : 0}
                       onChange={(e) => setNewPrecio(parseInt(e.target.value || '0', 10))}
                       onKeyDown={(e) => onEditKeyDown(e)}
                       className="w-40 max-w-full px-3 py-2 border border-amber-300 rounded-md"
                       placeholder="0"
+                      aria-label="Precio del barrio nuevo"
                     />
                   </td>
                 </tr>
@@ -229,10 +250,11 @@ const AdminDomicilios: React.FC = () => {
               )}
 
               {/* Filas de datos */}
-              {filtered.map((d) => {
+              {filtered.map((d, index) => {
                 const isEditing = editingId === d.barrio;
+                const idKey = d.barrio || (typeof d.row_number !== 'undefined' ? `row-${d.row_number}` : `idx-${index}`);
                 return (
-                  <tr key={d.barrio}>
+                  <tr key={idKey}>
                     {/* Barrio: solo lectura (key) */}
                     <td className="px-3 py-3 align-middle">
                       <div className="flex items-center justify-between gap-3">
@@ -249,8 +271,9 @@ const AdminDomicilios: React.FC = () => {
                           <div className="flex gap-2">
                             <button
                               onClick={() => saveExisting(d.barrio)}
-                              className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1"
+                              className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1 disabled:opacity-60"
                               title="Guardar"
+                              disabled={saving}
                             >
                               <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
                             </button>
@@ -270,16 +293,18 @@ const AdminDomicilios: React.FC = () => {
                     <td className="px-3 py-3 align-middle">
                       {!isEditing ? (
                         <span className="tabular-nums font-medium">
-                          ${Number(d.precio || 0).toLocaleString('es-CO')}
+                          {currencyCO.format(Number(d.precio || 0))}
                         </span>
                       ) : (
                         <input
                           type="number"
-                          value={editPrecio}
+                          min={0}
+                          value={Number.isFinite(editPrecio) ? editPrecio : 0}
                           onChange={(e) => setEditPrecio(parseInt(e.target.value || '0', 10))}
                           onKeyDown={(e) => onEditKeyDown(e, d.barrio)}
                           className="w-40 max-w-full px-3 py-2 border border-gray-300 rounded-md"
                           autoFocus
+                          aria-label="Editar precio"
                         />
                       )}
                     </td>
@@ -300,7 +325,9 @@ const AdminDomicilios: React.FC = () => {
         </div>
 
         <p className="mt-2 text-xs text-gray-500">
-          Consejo: toca <span className="font-medium">Editar</span>, cambia el precio y presiona <kbd className="px-1 border rounded">Enter</kbd> para guardar o <kbd className="px-1 border rounded">Esc</kbd> para cancelar.
+          Consejo: toca <span className="font-medium">Editar</span>, cambia el precio y presiona{' '}
+          <kbd className="px-1 border rounded">Enter</kbd> para guardar o{' '}
+          <kbd className="px-1 border rounded">Esc</kbd> para cancelar.
         </p>
       </div>
     </div>
