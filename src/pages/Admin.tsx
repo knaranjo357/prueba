@@ -105,9 +105,9 @@ const Admin: React.FC = () => {
 
             <div className="flex items-center gap-4">
               <div className="flex flex-wrap gap-1 bg-gray-100 rounded-lg p-1 border border-gray-200">
-                <TabButton id="menu" active={activeTab} onClick={setActiveTab} label="Menú" icon={<MenuIcon size={16} />} />
                 <TabButton id="orders" active={activeTab} onClick={setActiveTab} label="Pedidos" icon={<ShoppingBag size={16} />} />
-                <TabButton id="domicilios" active={activeTab} onClick={setActiveTab} label="Domicilios" icon={<MapPin size={16} />} />
+                <TabButton id="menu" active={activeTab} onClick={setActiveTab} label="Menú" icon={<MenuIcon size={16} />} />
+                <TabButton id="domicilios" active={activeTab} onClick={setActiveTab} label="Domis" icon={<MapPin size={16} />} />
                 <TabButton id="clientes" active={activeTab} onClick={setActiveTab} label="Clientes" icon={<Users size={16} />} />
               </div>
 
@@ -125,8 +125,8 @@ const Admin: React.FC = () => {
 
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === 'menu' && <MenuTab />}
         {activeTab === 'orders' && <OrdersTab />}
+        {activeTab === 'menu' && <MenuTab />}
         {activeTab === 'domicilios' && <DomiciliosTab />}
         {activeTab === 'clientes' && <ClientesTab />}
       </div>
