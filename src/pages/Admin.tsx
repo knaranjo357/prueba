@@ -4,14 +4,16 @@ import MenuTab from './AdminMenu';
 import OrdersTab from './AdminOrders';
 import DomiciliosTab from './AdminDomicilios';
 import ClientesTab from './AdminClientes';
+import VariablesTab from './AdminVariables';
 
-type TabKey = 'orders' | 'menu' | 'domicilios' | 'clientes';
+type TabKey = 'orders' | 'menu' | 'domicilios' | 'clientes' | 'variables';
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<TabKey>('menu');
+  // ⬇️ Arranca en Pedidos
+  const [activeTab, setActiveTab] = useState<TabKey>('orders');
 
   useEffect(() => {
     const saved = localStorage.getItem('admin_auth');
@@ -39,8 +41,6 @@ const Admin: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full border border-gray-100">
-
-
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -102,13 +102,14 @@ const Admin: React.FC = () => {
       <div className="bg-white/80 backdrop-blur border-b border-gray-100 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-
             <div className="flex items-center gap-4">
               <div className="flex flex-wrap gap-1 bg-gray-100 rounded-lg p-1 border border-gray-200">
                 <TabButton id="orders" active={activeTab} onClick={setActiveTab} label="Pedidos" icon={<ShoppingBag size={16} />} />
                 <TabButton id="menu" active={activeTab} onClick={setActiveTab} label="Menú" icon={<MenuIcon size={16} />} />
                 <TabButton id="domicilios" active={activeTab} onClick={setActiveTab} label="Domis" icon={<MapPin size={16} />} />
                 <TabButton id="clientes" active={activeTab} onClick={setActiveTab} label="Clientes" icon={<Users size={16} />} />
+                {/* Nuevo tab */}
+                <TabButton id="variables" active={activeTab} onClick={setActiveTab} label="Información" icon={<Settings size={16} />} />
               </div>
 
               <button
@@ -129,6 +130,7 @@ const Admin: React.FC = () => {
         {activeTab === 'menu' && <MenuTab />}
         {activeTab === 'domicilios' && <DomiciliosTab />}
         {activeTab === 'clientes' && <ClientesTab />}
+        {activeTab === 'variables' && <VariablesTab />}
       </div>
     </div>
   );
