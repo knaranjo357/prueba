@@ -5,7 +5,7 @@ import OrdersTab from './AdminOrders';
 import DomiciliosTab from './AdminDomicilios';
 import ClientesTab from './AdminClientes';
 
-type TabKey = 'menu' | 'orders' | 'domicilios' | 'clientes';
+type TabKey = 'orders' | 'menu' | 'domicilios' | 'clientes';
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
