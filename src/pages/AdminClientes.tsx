@@ -12,6 +12,8 @@ interface Cliente {
 
 const CLIENTES_API = 'https://n8n.alliasoft.com/webhook/luis-res/clientes';
 
+const currencyCO = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+
 /** Normaliza el whatsapp a 57XXXXXXXXXX (sin +, espacios, guiones) */
 const normalizeWhatsApp = (raw: string): string => {
   const digits = (raw || '').replace(/\D+/g, '');
@@ -44,10 +46,13 @@ const AdminClientes: React.FC = () => {
   const [newDomicilio, setNewDomicilio] = useState<number>(0);
   const [newNotas, setNewNotas] = useState('');
 
+  // Estados de guardado para bloquear botones
+  const [saving, setSaving] = useState(false);
+
   const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(CLIENTES_API);
+      const res = await fetch(CLIENTES_API, { cache: 'no-store' });
       const data = await res.json();
       if (Array.isArray(data)) setItems(data as Cliente[]);
     } catch (e) {
@@ -106,20 +111,23 @@ const AdminClientes: React.FC = () => {
     setNewDireccion('');
     setNewDomicilio(0);
     setNewNotas('');
+    setSaving(false);
   };
 
   // Guardar cambios en cliente existente (whatsapp = key, NO editable)
   const saveExisting = async (whatsappKey: string) => {
+    if (saving) return;
     try {
       if (!whatsappKey) {
         alert('WhatsApp inválido.');
         return;
       }
+      setSaving(true);
       const payload = {
-        whatsapp: Number(whatsappKey),          // clave (no se cambia)
+        whatsapp: Number(whatsappKey), // clave (no se cambia)
         nombre: (editNombre || '').trim(),
         direccion: (editDireccion || '').trim(),
-        domicilio: Number(editDomicilio) || 0,
+        domicilio: Number.isFinite(editDomicilio) ? Number(editDomicilio) : 0,
         notas: (editNotas || '').trim(),
       };
       const res = await fetch(CLIENTES_API, {
@@ -133,12 +141,16 @@ const AdminClientes: React.FC = () => {
     } catch (e) {
       console.error(e);
       alert('No se pudo guardar el cliente.');
+    } finally {
+      setSaving(false);
     }
   };
 
   // Guardar nuevo cliente (aquí sí se ingresa whatsapp)
   const saveNew = async () => {
+    if (saving) return;
     try {
+      setSaving(true);
       const wpp = normalizeWhatsApp(newWhatsapp);
       if (!wpp || wpp.length < 12) {
         alert('El WhatsApp es obligatorio y debe ser válido: 57 + 10 dígitos.');
@@ -154,7 +166,7 @@ const AdminClientes: React.FC = () => {
         whatsapp: Number(wpp),
         nombre: (newNombre || '').trim(),
         direccion: (newDireccion || '').trim(),
-        domicilio: Number(newDomicilio) || 0,
+        domicilio: Number.isFinite(newDomicilio) ? Number(newDomicilio) : 0,
         notas: (newNotas || '').trim(),
       };
       const res = await fetch(CLIENTES_API, {
@@ -168,11 +180,16 @@ const AdminClientes: React.FC = () => {
     } catch (e) {
       console.error(e);
       alert('No se pudo crear el cliente.');
+    } finally {
+      setSaving(false);
     }
   };
 
   // Enter/Esc en edición
-  const onEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, whatsappKey?: string) => {
+  const onEditKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    whatsappKey?: string
+  ) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (editingId === 'new') saveNew();
@@ -198,13 +215,17 @@ const AdminClientes: React.FC = () => {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Buscar por nombre, WhatsApp o dirección…"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm pl-9"
+                  aria-label="Buscar clientes"
+                  autoComplete="off"
                 />
                 <Search size={16} className="pointer-events-none absolute left-3 top-2.5 text-gray-500" />
               </div>
 
               <button
                 onClick={fetchItems}
-                className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
+                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-60"
+                disabled={loading}
+                title="Actualizar lista"
               >
                 <RefreshCw size={16} />
                 Actualizar
@@ -213,6 +234,7 @@ const AdminClientes: React.FC = () => {
               <button
                 onClick={startNew}
                 className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2"
+                title="Nuevo cliente"
               >
                 <Plus size={16} />
                 Nuevo cliente
@@ -226,7 +248,7 @@ const AdminClientes: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 sticky top-[calc(6rem+1px)] z-10">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700">WhatsApp</th>
                 <th className="text-left px-3 py-3 font-semibold text-gray-700">Nombre</th>
@@ -248,9 +270,13 @@ const AdminClientes: React.FC = () => {
                       onKeyDown={(e) => onEditKeyDown(e)}
                       placeholder="+57 3xx xxx xxxx"
                       className="w-44 md:w-56 max-w-full px-3 py-2 border border-amber-300 rounded-md"
+                      aria-label="WhatsApp nuevo"
+                      autoComplete="off"
+                      inputMode="numeric"
                     />
                     <p className="text-[11px] text-gray-500 mt-1">
-                      Guardado como: <strong>{normalizeWhatsApp(newWhatsapp) || '—'}</strong>
+                      Guardado como:{' '}
+                      <strong>{normalizeWhatsApp(newWhatsapp) || '—'}</strong>
                     </p>
                   </td>
                   <td className="px-3 py-2 align-middle">
@@ -260,6 +286,8 @@ const AdminClientes: React.FC = () => {
                       onKeyDown={(e) => onEditKeyDown(e)}
                       className="w-40 md:w-56 max-w-full px-3 py-2 border border-amber-300 rounded-md"
                       placeholder="Nombre"
+                      aria-label="Nombre nuevo"
+                      autoComplete="off"
                     />
                   </td>
                   <td className="px-3 py-2 align-middle">
@@ -269,16 +297,20 @@ const AdminClientes: React.FC = () => {
                       onKeyDown={(e) => onEditKeyDown(e)}
                       className="w-56 md:w-80 max-w-full px-3 py-2 border border-amber-300 rounded-md"
                       placeholder="Dirección"
+                      aria-label="Dirección nueva"
+                      autoComplete="off"
                     />
                   </td>
                   <td className="px-3 py-2 align-middle">
                     <input
                       type="number"
-                      value={newDomicilio}
+                      min={0}
+                      value={Number.isFinite(newDomicilio) ? newDomicilio : 0}
                       onChange={(e) => setNewDomicilio(parseInt(e.target.value || '0', 10))}
                       onKeyDown={(e) => onEditKeyDown(e)}
                       className="w-32 max-w-full px-3 py-2 border border-amber-300 rounded-md"
                       placeholder="0"
+                      aria-label="Domicilio nuevo"
                     />
                   </td>
                   <td className="px-3 py-2 align-middle">
@@ -289,14 +321,16 @@ const AdminClientes: React.FC = () => {
                       className="w-56 md:w-80 max-w-full px-3 py-2 border border-amber-300 rounded-md"
                       rows={1}
                       placeholder="Observaciones"
+                      aria-label="Notas nuevas"
                     />
                   </td>
                   <td className="px-3 py-2 align-middle">
                     <div className="flex gap-2">
                       <button
                         onClick={saveNew}
-                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1"
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1 disabled:opacity-60"
                         title="Guardar"
+                        disabled={saving}
                       >
                         <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
                       </button>
@@ -320,12 +354,13 @@ const AdminClientes: React.FC = () => {
               )}
 
               {/* Datos */}
-              {filtered.map((c) => {
+              {filtered.map((c, index) => {
                 const key = normalizeWhatsApp(String(c.whatsapp ?? ''));
+                const idKey = key || (typeof c.row_number !== 'undefined' ? `row-${c.row_number}` : `idx-${index}`);
                 const isEditing = editingId === key;
 
                 return (
-                  <tr key={key || `${c.row_number}-${c.nombre}`}>
+                  <tr key={idKey}>
                     {/* WhatsApp (NO editable) */}
                     <td className="px-3 py-3 align-middle">
                       {key ? (
@@ -354,6 +389,8 @@ const AdminClientes: React.FC = () => {
                           onKeyDown={(e) => onEditKeyDown(e, key)}
                           className="w-40 md:w-56 max-w-full px-3 py-2 border border-gray-300 rounded-md"
                           autoFocus
+                          aria-label="Editar nombre"
+                          autoComplete="off"
                         />
                       )}
                     </td>
@@ -368,6 +405,8 @@ const AdminClientes: React.FC = () => {
                           onChange={(e) => setEditDireccion(e.target.value)}
                           onKeyDown={(e) => onEditKeyDown(e, key)}
                           className="w-56 md:w-80 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                          aria-label="Editar dirección"
+                          autoComplete="off"
                         />
                       )}
                     </td>
@@ -377,16 +416,18 @@ const AdminClientes: React.FC = () => {
                       {!isEditing ? (
                         <span className="tabular-nums font-medium">
                           {c.domicilio !== '' && c.domicilio !== null && c.domicilio !== undefined
-                            ? `$${Number(c.domicilio || 0).toLocaleString('es-CO')}`
+                            ? currencyCO.format(Number(c.domicilio || 0))
                             : '—'}
                         </span>
                       ) : (
                         <input
                           type="number"
-                          value={editDomicilio}
+                          min={0}
+                          value={Number.isFinite(editDomicilio) ? editDomicilio : 0}
                           onChange={(e) => setEditDomicilio(parseInt(e.target.value || '0', 10))}
                           onKeyDown={(e) => onEditKeyDown(e, key)}
                           className="w-32 max-w-full px-3 py-2 border border-gray-300 rounded-md"
+                          aria-label="Editar domicilio"
                         />
                       )}
                     </td>
@@ -402,6 +443,7 @@ const AdminClientes: React.FC = () => {
                           onKeyDown={(e) => onEditKeyDown(e, key)}
                           className="w-56 md:w-80 max-w-full px-3 py-2 border border-gray-300 rounded-md"
                           rows={1}
+                          aria-label="Editar notas"
                         />
                       )}
                     </td>
@@ -420,8 +462,9 @@ const AdminClientes: React.FC = () => {
                         <div className="flex gap-2">
                           <button
                             onClick={() => saveExisting(key)}
-                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1"
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1 disabled:opacity-60"
                             title="Guardar"
+                            disabled={saving}
                           >
                             <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
                           </button>
@@ -452,7 +495,9 @@ const AdminClientes: React.FC = () => {
         </div>
 
         <p className="mt-2 text-xs text-gray-500">
-          Consejo: toca <span className="font-medium">Editar</span>, modifica los campos y presiona <kbd className="px-1 border rounded">Enter</kbd> para guardar o <kbd className="px-1 border rounded">Esc</kbd> para cancelar. El <strong>WhatsApp no es editable</strong>.
+          Consejo: toca <span className="font-medium">Editar</span>, modifica los campos y presiona{' '}
+          <kbd className="px-1 border rounded">Enter</kbd> para guardar o{' '}
+          <kbd className="px-1 border rounded">Esc</kbd> para cancelar. El <strong>WhatsApp no es editable</strong>.
         </p>
       </div>
     </div>
