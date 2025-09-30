@@ -316,6 +316,28 @@ const postOrderFull = async (o: Order, override?: Partial<Order>) => {
   if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
 };
 
+/** ===== UI por estado ===== */
+const getStatusUI = (estado?: string) => {
+  const s = (estado || '').toLowerCase().trim();
+  if (s === 'pidiendo') {
+    return {
+      card: 'bg-yellow-50 border-yellow-200',
+      badge: 'bg-yellow-100 text-yellow-800',
+    };
+  }
+  if (s === 'confirmado') {
+    return {
+      card: 'bg-orange-50 border-orange-200',
+      badge: 'bg-orange-100 text-orange-800',
+    };
+  }
+  // default: verde para impreso, entregado y los demás
+  return {
+    card: 'bg-green-50 border-green-200',
+    badge: 'bg-green-100 text-green-800',
+  };
+};
+
 /** ===== Componente ===== */
 const OrdersTab: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -773,9 +795,14 @@ const OrdersTab: React.FC = () => {
           const phone = cleanPhone(order.numero);
           const isEditing = editingId === order.row_number;
           const anchorId = `pedido-${order.row_number}`;
+          const ui = getStatusUI(order.estado);
 
           return (
-            <div key={order.row_number} id={anchorId} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div
+              key={order.row_number}
+              id={anchorId}
+              className={`rounded-lg shadow-sm border p-4 ${ui.card}`}
+            >
               <div className="flex items-start justify-between mb-4 gap-3">
                 <div className="min-w-0">
                   <h3 className="font-bold text-gray-900">Pedido #{order.row_number}</h3>
@@ -783,7 +810,7 @@ const OrdersTab: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${ui.badge}`}>
                     {order.estado}
                   </span>
                   <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
