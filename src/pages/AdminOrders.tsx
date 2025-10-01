@@ -333,8 +333,8 @@ const getStatusUI = (estado?: string) => {
   }
   // default: verde para impreso, entregado y los demás
   return {
-    card: 'bg-green-50 border-green-200',
-    badge: 'bg-green-100 text-green-800',
+  card:  'bg-green-100 border-green-300',
+  badge: 'bg-green-200 text-green-900',
   };
 };
 
