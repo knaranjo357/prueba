@@ -1,18 +1,38 @@
+// src/pages/Admin.tsx
 import React, { useEffect, useState } from 'react';
-import { Settings, LogOut, Menu as MenuIcon, ShoppingBag, MapPin, Users } from 'lucide-react';
+import {
+  Settings,
+  LogOut,
+  Menu as MenuIcon,
+  ShoppingBag,
+  MapPin,
+  Users,
+  BarChart3,
+  AudioLines, // ⬅️ icono para Dictado
+} from 'lucide-react';
+
 import MenuTab from './AdminMenu';
 import OrdersTab from './AdminOrders';
 import DomiciliosTab from './AdminDomicilios';
 import ClientesTab from './AdminClientes';
 import VariablesTab from './AdminVariables';
+import ResultadosTab from './AdminResultados';
+import DictadoTab from './Dictado'; // ⬅️ nuevo import
 
-type TabKey = 'orders' | 'menu' | 'domicilios' | 'clientes' | 'variables';
+type TabKey =
+  | 'orders'
+  | 'dictado'   // ⬅️ nueva pestaña
+  | 'menu'
+  | 'domicilios'
+  | 'clientes'
+  | 'variables'
+  | 'resultados';
 
 const Admin: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  // ⬇️ Arranca en Pedidos
+  // Arranca en Pedidos
   const [activeTab, setActiveTab] = useState<TabKey>('orders');
 
   useEffect(() => {
@@ -43,7 +63,9 @@ const Admin: React.FC = () => {
         <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full border border-gray-100">
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
               <input
                 type="email"
                 value={email}
@@ -54,7 +76,9 @@ const Admin: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Contraseña
+              </label>
               <input
                 type="password"
                 value={password}
@@ -104,12 +128,56 @@ const Admin: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex flex-wrap gap-1 bg-gray-100 rounded-lg p-1 border border-gray-200">
-                <TabButton id="orders" active={activeTab} onClick={setActiveTab} label="Pedidos" icon={<ShoppingBag size={16} />} />
-                <TabButton id="menu" active={activeTab} onClick={setActiveTab} label="Menú" icon={<MenuIcon size={16} />} />
-                <TabButton id="domicilios" active={activeTab} onClick={setActiveTab} label="Domis" icon={<MapPin size={16} />} />
-                <TabButton id="clientes" active={activeTab} onClick={setActiveTab} label="Clientes" icon={<Users size={16} />} />
-                {/* Nuevo tab */}
-                <TabButton id="variables" active={activeTab} onClick={setActiveTab} label="Información" icon={<Settings size={16} />} />
+                <TabButton
+                  id="orders"
+                  active={activeTab}
+                  onClick={setActiveTab}
+                  label="Pedidos"
+                  icon={<ShoppingBag size={16} />}
+                />
+                {/* ⬇️ Nuevo tab Dictado, junto a Pedidos */}
+                <TabButton
+                  id="dictado"
+                  active={activeTab}
+                  onClick={setActiveTab}
+                  label="Dictado"
+                  icon={<AudioLines size={16} />}
+                />
+                <TabButton
+                  id="menu"
+                  active={activeTab}
+                  onClick={setActiveTab}
+                  label="Menú"
+                  icon={<MenuIcon size={16} />}
+                />
+                <TabButton
+                  id="domicilios"
+                  active={activeTab}
+                  onClick={setActiveTab}
+                  label="Domis"
+                  icon={<MapPin size={16} />}
+                />
+                <TabButton
+                  id="clientes"
+                  active={activeTab}
+                  onClick={setActiveTab}
+                  label="Clientes"
+                  icon={<Users size={16} />}
+                />
+                <TabButton
+                  id="variables"
+                  active={activeTab}
+                  onClick={setActiveTab}
+                  label="Información"
+                  icon={<Settings size={16} />}
+                />
+                <TabButton
+                  id="resultados"
+                  active={activeTab}
+                  onClick={setActiveTab}
+                  label="Resultados"
+                  icon={<BarChart3 size={16} />}
+                />
               </div>
 
               <button
@@ -127,10 +195,12 @@ const Admin: React.FC = () => {
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         {activeTab === 'orders' && <OrdersTab />}
+        {activeTab === 'dictado' && <DictadoTab />} {/* ⬅️ aquí se muestra Dictado */}
         {activeTab === 'menu' && <MenuTab />}
         {activeTab === 'domicilios' && <DomiciliosTab />}
         {activeTab === 'clientes' && <ClientesTab />}
         {activeTab === 'variables' && <VariablesTab />}
+        {activeTab === 'resultados' && <ResultadosTab />}
       </div>
     </div>
   );
