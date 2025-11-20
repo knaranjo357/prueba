@@ -60,7 +60,7 @@ const getStatusUI = (estado?: string) => {
   return { card: 'bg-white border-gray-200 shadow-gray-100', badge: 'bg-gray-100 text-gray-800 ring-1 ring-gray-300' };
 };
 
-// === LOGICA DE PARSEO ROBUSTA (Corrige el error de las comas en notas) ===
+// === LOGICA DE PARSEO ROBUSTA ===
 const splitOutsideParens = (s: string, separators = [';']): string[] => {
   const sepSet = new Set(separators);
   const out: string[] = [];
@@ -71,7 +71,6 @@ const splitOutsideParens = (s: string, separators = [';']): string[] => {
     if (ch === '(') depth++;
     else if (ch === ')') depth = Math.max(0, depth - 1);
     
-    // Solo cortamos si NO estamos dentro de paréntesis
     if (depth === 0 && sepSet.has(ch)) {
       if (buf.trim()) out.push(buf.trim());
       buf = '';
@@ -87,25 +86,20 @@ const splitByCommaOutsideParens = (s: string): string[] => splitOutsideParens(s,
 
 const parseDetailsForView = (raw: string) => {
   if (!raw) return [];
-  // 1. Separar items por ";"
   const itemStrings = splitOutsideParens(raw, [';', '|']).map(x => x.trim()).filter(Boolean);
   
   return itemStrings.map(itemStr => {
-    // 2. Separar partes por "," respetando paréntesis
     const parts = splitByCommaOutsideParens(itemStr).map(x => x.trim());
     
     let quantity = 1;
     let name = '';
     let priceTotal = 0;
 
-    // Estructura: - CANT, NOMBRE (con, notas), PRECIO_TOTAL
     if (parts.length >= 3) {
       quantity = parseInt(parts[0].replace(/^-/, ''), 10) || 1;
-      // El nombre es todo lo que está entre la cantidad y el precio final
       name = parts.slice(1, parts.length - 1).join(', ').trim();
       priceTotal = parseInt(parts[parts.length - 1], 10) || 0;
     } else if (parts.length === 2) {
-      // Caso raro fallback
       quantity = 1; 
       name = parts[0];
       priceTotal = parseInt(parts[1], 10) || 0;
@@ -113,10 +107,7 @@ const parseDetailsForView = (raw: string) => {
       name = parts[0] || 'Item';
     }
 
-    // Calcular precio unitario para mostrar (opcional)
     const priceUnit = quantity > 0 ? Math.round(priceTotal / quantity) : 0;
-    
-    // Devolvemos priceTotal para mostrar el total de esa línea como en el ejemplo
     return { quantity, name, priceTotal, priceUnit };
   });
 };
@@ -236,20 +227,41 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
                 </div>
               )}
               {cartItems.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 shadow-sm group hover:border-gold/30 transition-colors">
-                   <div className="flex items-center border border-gray-200 rounded-lg bg-gray-50 h-8 shrink-0">
-                     <button onClick={() => decreaseItem(idx)} className="w-8 h-full flex items-center justify-center hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-l-lg transition-colors"><Minus size={14}/></button>
-                     <span className="w-8 text-center font-bold text-sm bg-white h-full flex items-center justify-center border-x border-gray-200">{item.quantity}</span>
-                     <button onClick={() => addItemToCart({ nombre: item.name, valor: item.priceUnit } as any)} className="w-8 h-full flex items-center justify-center hover:bg-green-50 text-gray-500 hover:text-green-500 rounded-r-lg transition-colors"><Plus size={14}/></button>
+                <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 shadow-sm group hover:border-gold/30 transition-colors">
+                   
+                   {/* 1. Sección Texto (Nombre y Precio Unitario) + Botón Borrar Móvil */}
+                   <div className="flex justify-between items-start w-full sm:w-auto sm:flex-1 sm:order-2">
+                      <div className="min-w-0">
+                         <p className="text-sm font-bold text-gray-800 break-words leading-tight">{item.name}</p>
+                         <p className="text-xs text-gray-500 mt-1">{money(item.priceUnit)}</p>
+                      </div>
+                      {/* Botón borrar solo visible en celular (esquina superior derecha) */}
+                      <button onClick={() => setCartItems(prev => prev.filter((_, i) => i !== idx))} className="sm:hidden text-gray-300 hover:text-red-500 p-1 -mr-1 -mt-1 shrink-0">
+                         <X size={18}/>
+                      </button>
                    </div>
-                   <div className="flex-1 min-w-0">
-                     <p className="text-sm font-bold text-gray-800 break-words leading-tight">{item.name}</p>
-                     <p className="text-xs text-gray-500">{money(item.priceUnit)}</p>
+
+                   {/* 2. Controles de Cantidad y Total (Abajo en Celular, Izquierda/Derecha en Desktop) */}
+                   <div className="flex items-center justify-between w-full sm:w-auto sm:shrink-0 sm:order-1 gap-4">
+                      {/* Stepper */}
+                      <div className="flex items-center border border-gray-200 rounded-lg bg-gray-50 h-8 shrink-0">
+                         <button onClick={() => decreaseItem(idx)} className="w-8 h-full flex items-center justify-center hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-l-lg transition-colors"><Minus size={14}/></button>
+                         <span className="w-8 text-center font-bold text-sm bg-white h-full flex items-center justify-center border-x border-gray-200">{item.quantity}</span>
+                         <button onClick={() => addItemToCart({ nombre: item.name, valor: item.priceUnit } as any)} className="w-8 h-full flex items-center justify-center hover:bg-green-50 text-gray-500 hover:text-green-500 rounded-r-lg transition-colors"><Plus size={14}/></button>
+                      </div>
+                      
+                      {/* Total (Visible en Celular junto a los controles) */}
+                      <div className="text-right sm:hidden">
+                          <p className="text-sm font-bold text-gray-800">{money(item.quantity * item.priceUnit)}</p>
+                      </div>
                    </div>
-                   <div className="text-right shrink-0">
+
+                   {/* 3. Total y Borrar (Solo Desktop) */}
+                   <div className="hidden sm:flex items-center gap-3 text-right shrink-0 sm:order-3">
                      <p className="text-sm font-bold text-gray-800">{money(item.quantity * item.priceUnit)}</p>
+                     <button onClick={() => setCartItems(prev => prev.filter((_, i) => i !== idx))} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"><X size={16}/></button>
                    </div>
-                   <button onClick={() => setCartItems(prev => prev.filter((_, i) => i !== idx))} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"><X size={16}/></button>
+
                 </div>
               ))}
             </div>
