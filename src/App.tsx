@@ -9,7 +9,7 @@ import Footer from './components/Footer';
 import Kitchen from './pages/Kitchen';
 import Despacho from './pages/Despacho';
 import Admin from './pages/Admin';
-import Dictado from './pages/Dictado';
+import Dictado from './pages/DictadoPage';
 
 function App() {
   return (
