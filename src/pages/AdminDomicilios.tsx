@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { RefreshCw, Pencil, X, Save, Plus, Search } from 'lucide-react';
+import { RefreshCw, Pencil, X, Save, Plus, Search, MapPin, DollarSign } from 'lucide-react';
 
 interface Domicilio {
   row_number?: number;
@@ -17,7 +17,7 @@ const AdminDomicilios: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   // Ediciones
-  const [editingId, setEditingId] = useState<string | 'new' | null>(null); // usamos "barrio" como key
+  const [editingId, setEditingId] = useState<string | 'new' | null>(null); // key = barrio
   const [editPrecio, setEditPrecio] = useState<number>(0);
   const [newBarrio, setNewBarrio] = useState('');
   const [newPrecio, setNewPrecio] = useState<number>(0);
@@ -54,10 +54,12 @@ const AdminDomicilios: React.FC = () => {
     setEditingId('new');
     setNewBarrio('');
     setNewPrecio(0);
+    // Scroll to top suavemente para ver el formulario
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const startEdit = (d: Domicilio) => {
-    setEditingId(d.barrio);        // El barrio funciona como key
+    setEditingId(d.barrio);
     setEditPrecio(Number(d.precio) || 0);
   };
 
@@ -74,8 +76,8 @@ const AdminDomicilios: React.FC = () => {
     try {
       setSaving(true);
       const payload = {
-        barrio: barrioKey,                              // clave (no editable)
-        precio: Number.isFinite(editPrecio) ? editPrecio : 0, // nuevo precio
+        barrio: barrioKey, // clave (no editable)
+        precio: Number.isFinite(editPrecio) ? editPrecio : 0,
       };
       const res = await fetch(DOMICILIOS_API, {
         method: 'POST',
@@ -128,7 +130,7 @@ const AdminDomicilios: React.FC = () => {
     }
   };
 
-  // Manejo de teclado para Enter/Esc al editar
+  // Manejo de teclado
   const onEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, barrioKey?: string) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -141,194 +143,203 @@ const AdminDomicilios: React.FC = () => {
   };
 
   return (
-    <div className="min-w-0">
-      {/* Barra superior sticky (siempre visible) */}
-      <div className="sticky top-24 z-20 bg-white/90 backdrop-blur border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <h2 className="text-xl font-bold text-gray-900">Zonas de Domicilio</h2>
+    <div className="min-w-0 pb-20">
+      {/* === HEADER & TOOLS === */}
+      <div className="sticky top-24 z-20 bg-white/90 backdrop-blur border-b border-gray-100 -mx-4 px-4 py-4 mb-6 shadow-sm">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900">Zonas y Tarifas</h2>
+            <span className="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-medium">{items.length} Zonas</span>
+          </div>
 
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:flex-none min-w-[220px]">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Buscar barrio…"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm pl-9"
-                  aria-label="Buscar barrio"
-                  autoComplete="off"
-                />
-                <Search size={16} className="pointer-events-none absolute left-3 top-2.5 text-gray-500" />
-              </div>
-
-              <button
-                onClick={fetchItems}
-                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-60"
-                disabled={loading}
-                title="Actualizar"
-              >
-                <RefreshCw size={16} />
-                Actualizar
-              </button>
-
-              <button
-                onClick={startNew}
-                className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2"
-                title="Nuevo barrio"
-              >
-                <Plus size={16} />
-                Nuevo barrio
-              </button>
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            {/* Buscador */}
+            <div className="relative flex-1 md:flex-none min-w-[240px] group">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-amber-500 transition-colors" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar barrio..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:bg-white shadow-sm pl-10 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+                autoComplete="off"
+              />
             </div>
+
+            <button
+              onClick={fetchItems}
+              className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 p-2 rounded-lg shadow-sm transition-colors"
+              title="Actualizar"
+              disabled={loading}
+            >
+              <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+            </button>
+
+            <button
+              onClick={startNew}
+              className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-bold shadow-md shadow-amber-500/20 flex items-center gap-2 transition-transform active:scale-95"
+            >
+              <Plus size={18} />
+              Nueva Zona
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Tabla responsive 2 columnas */}
-      <div className="max-w-7xl mx-auto px-4 py-4">
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 sticky top-0 z-10">
-              <tr>
-                <th className="text-left px-3 py-3 font-semibold text-gray-700 w-[60%]">Barrio</th>
-                <th className="text-left px-3 py-3 font-semibold text-gray-700 w-[40%]">Precio</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-gray-100">
-              {/* Fila de creación */}
-              {editingId === 'new' && (
-                <tr className="bg-amber-50/50">
-                  <td className="px-3 py-2 align-middle">
-                    <div className="flex items-center gap-2">
-                      <input
-                        value={newBarrio}
-                        onChange={(e) => setNewBarrio(e.target.value)}
-                        onKeyDown={(e) => onEditKeyDown(e)}
-                        placeholder="Nombre del barrio"
-                        className="w-full md:w-80 max-w-full px-3 py-2 border border-amber-300 rounded-md"
-                        aria-label="Nombre del barrio nuevo"
-                        autoComplete="off"
-                      />
-                      <button
-                        onClick={saveNew}
-                        className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1 disabled:opacity-60"
-                        title="Guardar nuevo"
-                        disabled={saving}
-                      >
-                        <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="shrink-0 border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
-                        title="Cancelar"
-                      >
-                        <X size={16} /> <span className="hidden sm:inline">Cancelar</span>
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 align-middle">
-                    <input
-                      type="number"
-                      min={0}
-                      value={Number.isFinite(newPrecio) ? newPrecio : 0}
-                      onChange={(e) => setNewPrecio(parseInt(e.target.value || '0', 10))}
-                      onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-40 max-w-full px-3 py-2 border border-amber-300 rounded-md"
-                      placeholder="0"
-                      aria-label="Precio del barrio nuevo"
-                    />
-                  </td>
-                </tr>
-              )}
-
-              {/* Cargando */}
-              {loading && (
-                <tr>
-                  <td colSpan={2} className="px-3 py-3 text-gray-500">Cargando…</td>
-                </tr>
-              )}
-
-              {/* Filas de datos */}
-              {filtered.map((d, index) => {
-                const isEditing = editingId === d.barrio;
-                const idKey = d.barrio || (typeof d.row_number !== 'undefined' ? `row-${d.row_number}` : `idx-${index}`);
-                return (
-                  <tr key={idKey}>
-                    {/* Barrio: solo lectura (key) */}
-                    <td className="px-3 py-3 align-middle">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-medium text-gray-900 break-words">{d.barrio}</span>
-                        {!isEditing ? (
-                          <button
-                            onClick={() => startEdit(d)}
-                            className="shrink-0 border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
-                            title="Editar precio"
-                          >
-                            <Pencil size={16} /> <span className="hidden sm:inline">Editar</span>
-                          </button>
-                        ) : (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveExisting(d.barrio)}
-                              className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-1 disabled:opacity-60"
-                              title="Guardar"
-                              disabled={saving}
-                            >
-                              <Save size={16} /> <span className="hidden sm:inline">Guardar</span>
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="shrink-0 border border-gray-300 rounded-lg px-3 py-2 bg-white flex items-center gap-1"
-                              title="Cancelar"
-                            >
-                              <X size={16} /> <span className="hidden sm:inline">Cancelar</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Precio: editable solo cuando está en modo edición */}
-                    <td className="px-3 py-3 align-middle">
-                      {!isEditing ? (
-                        <span className="tabular-nums font-medium">
-                          {currencyCO.format(Number(d.precio || 0))}
-                        </span>
-                      ) : (
-                        <input
-                          type="number"
-                          min={0}
-                          value={Number.isFinite(editPrecio) ? editPrecio : 0}
-                          onChange={(e) => setEditPrecio(parseInt(e.target.value || '0', 10))}
-                          onKeyDown={(e) => onEditKeyDown(e, d.barrio)}
-                          className="w-40 max-w-full px-3 py-2 border border-gray-300 rounded-md"
-                          autoFocus
-                          aria-label="Editar precio"
-                        />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {/* Sin resultados */}
-              {!loading && filtered.length === 0 && editingId !== 'new' && (
-                <tr>
-                  <td colSpan={2} className="px-3 py-6 text-center text-gray-500">
-                    No hay barrios que coincidan con la búsqueda.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* === FORMULARIO DE CREACIÓN (Expandible) === */}
+      {editingId === 'new' && (
+        <div className="max-w-2xl mx-auto mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="bg-white border-2 border-amber-400 rounded-xl p-6 shadow-xl relative">
+            <div className="absolute -top-3 left-6 bg-amber-400 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+              <Plus size={12} /> Agregando Nueva Zona
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre del Barrio</label>
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500 transition-all">
+                  <MapPin size={18} className="text-gray-400" />
+                  <input
+                    value={newBarrio}
+                    onChange={(e) => setNewBarrio(e.target.value)}
+                    onKeyDown={onEditKeyDown}
+                    placeholder="Ej: Cañaveral"
+                    className="bg-transparent w-full outline-none text-sm font-medium"
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Precio Domicilio</label>
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500 transition-all">
+                  <DollarSign size={18} className="text-gray-400" />
+                  <input
+                    type="number"
+                    min={0}
+                    value={Number.isFinite(newPrecio) ? newPrecio : 0}
+                    onChange={(e) => setNewPrecio(parseInt(e.target.value || '0', 10))}
+                    onKeyDown={onEditKeyDown}
+                    className="bg-transparent w-full outline-none text-sm font-medium"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={cancelEdit} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
+              <button 
+                onClick={saveNew} 
+                disabled={saving}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-md flex items-center gap-2 disabled:opacity-50 transition-all"
+              >
+                {saving ? <RefreshCw className="animate-spin" size={18}/> : <Save size={18} />} 
+                Guardar Zona
+              </button>
+            </div>
+          </div>
         </div>
+      )}
 
-        <p className="mt-2 text-xs text-gray-500">
-          Consejo: toca <span className="font-medium">Editar</span>, cambia el precio y presiona{' '}
-          <kbd className="px-1 border rounded">Enter</kbd> para guardar o{' '}
-          <kbd className="px-1 border rounded">Esc</kbd> para cancelar.
-        </p>
+      {/* === GRID DE DOMICILIOS === */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {/* Estado de Carga */}
+        {loading && items.length === 0 && (
+          [...Array(6)].map((_, i) => (
+            <div key={i} className="h-32 bg-white rounded-xl border border-gray-100 p-4 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
+              <div className="h-8 bg-gray-200 rounded w-3/4 mt-auto"></div>
+            </div>
+          ))
+        )}
+
+        {filtered.map((d) => {
+          const isEditing = editingId === d.barrio;
+          
+          // --- MODO EDICIÓN (TARJETA) ---
+          if (isEditing) {
+            return (
+              <div key={d.barrio} className="bg-white rounded-xl border-2 border-amber-400 shadow-lg p-4 relative animate-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center mb-4">
+                   <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm truncate">
+                     <MapPin size={16} className="text-amber-500" />
+                     {d.barrio}
+                   </h3>
+                </div>
+                
+                <div className="mb-4">
+                   <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Nuevo Precio</label>
+                   <div className="flex items-center gap-1 border-b-2 border-amber-400 pb-1">
+                      <span className="text-gray-400 font-bold">$</span>
+                      <input 
+                        type="number"
+                        autoFocus
+                        value={Number.isFinite(editPrecio) ? editPrecio : 0}
+                        onChange={(e) => setEditPrecio(parseInt(e.target.value || '0', 10))}
+                        onKeyDown={(e) => onEditKeyDown(e, d.barrio)}
+                        className="w-full outline-none text-xl font-bold text-gray-900 bg-transparent"
+                      />
+                   </div>
+                </div>
+
+                <div className="flex gap-2 mt-2">
+                   <button 
+                     onClick={() => saveExisting(d.barrio)} 
+                     disabled={saving}
+                     className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded-lg text-sm font-bold shadow-sm"
+                   >
+                     Guardar
+                   </button>
+                   <button 
+                     onClick={cancelEdit} 
+                     className="px-3 py-1.5 bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-lg"
+                   >
+                     <X size={18}/>
+                   </button>
+                </div>
+              </div>
+            );
+          }
+
+          // --- MODO LECTURA (TARJETA) ---
+          return (
+            <div 
+              key={d.barrio} 
+              className="group bg-white rounded-xl border border-gray-200 hover:border-amber-200 p-5 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between min-h-[140px]"
+            >
+              <div>
+                <div className="flex items-start justify-between">
+                  <div className="p-2 bg-gray-50 text-gray-400 group-hover:text-amber-500 group-hover:bg-amber-50 rounded-lg transition-colors mb-3">
+                    <MapPin size={20} />
+                  </div>
+                  <button 
+                    onClick={() => startEdit(d)} 
+                    className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-amber-600 hover:bg-gray-50 rounded-full transition-all"
+                    title="Editar Precio"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                </div>
+                <h3 className="font-bold text-gray-700 leading-tight mb-1 line-clamp-2" title={d.barrio}>
+                  {d.barrio}
+                </h3>
+              </div>
+
+              <div className="pt-3 border-t border-gray-50 mt-2 flex items-baseline justify-between">
+                <span className="text-xs text-gray-400 font-medium uppercase">Tarifa</span>
+                <span className="text-xl font-black text-gray-900 tracking-tight">
+                  {currencyCO.format(Number(d.precio || 0))}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Estado Vacío */}
+        {!loading && filtered.length === 0 && editingId !== 'new' && (
+          <div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+            <MapPin size={48} className="mb-2 opacity-20" />
+            <p>No se encontraron zonas</p>
+            <button onClick={startNew} className="mt-2 text-amber-500 font-bold hover:underline">Agregar una nueva</button>
+          </div>
+        )}
       </div>
     </div>
   );

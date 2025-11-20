@@ -1,4 +1,4 @@
-// src/pages/Dictado.tsx
+// src/pages/DictadoPage.tsx
 import React, {
   useCallback,
   useEffect,
@@ -15,21 +15,12 @@ import {
   Loader2,
   RefreshCw,
   Printer,
-  LogOut,
   Search,
   Plus,
   Minus,
   X,
   ShoppingBasket
 } from 'lucide-react';
-
-/** ===== CONFIGURACIÓN DE USUARIOS ===== */
-const USERS_DB: Record<string, { pass: string; name: string }> = {
-  'ruby@luisres.com': { pass: 'ruby', name: 'Ruby' },
-  'tatiana@luisres.com': { pass: 'tatiana', name: 'Tatiana' },
-  'maria@luisres.com': { pass: 'maria', name: 'Maria' },
-  'admin@luisres.com': { pass: 'admin', name: 'Admin' }, // Agregado por si acaso
-};
 
 /** ===== Tipos ===== */
 type Clip = {
@@ -59,19 +50,18 @@ type DictadoResponse = {
 
 interface DictadoOrder {
   row_number: number;
-  id_pedido?: string; // HHMMSS
+  id_pedido?: string; 
   fecha: string;
-  nombre?: string;   // AHORA ES: MESERO
-  numero: string;    // AHORA ES: ID PEDIDO (ej: p_123456)
-  direccion: string; // AHORA ES: MESA
+  nombre?: string;   // MESERO
+  numero: string;    // ID PEDIDO
+  direccion: string; // MESA
   'detalle_pedido': string;
   valor_restaurante: number;
-  valor_domicilio: number; // Recargo (generalmente 0)
+  valor_domicilio: number;
   metodo_pago: string;
   estado: string;
 }
 
-// Tipo para el Menú
 type MenuItem = {
   id: number | string;
   nombre: string;
@@ -82,18 +72,21 @@ type MenuItem = {
   row_number?: number;
 };
 
-// Tipo para el "Carrito" de edición
 type CartItem = {
   name: string;
   quantity: number;
   priceUnit: number;
 };
 
+// PROPS: Recibimos el nombre del usuario logueado en Admin
+interface DictadoProps {
+  meseroName: string; 
+}
+
 /** ===== Config ===== */
 const ENDPOINTS = {
   audioDictado: 'https://n8n.alliasoft.com/webhook/luisres/pedidos/dictado',
   correccion: 'https://n8n.alliasoft.com/webhook/luisres/pedidos/correccion',
-  correccionAudio: 'https://n8n.alliasoft.com/webhook/luisres/pedidos/correccion_audio',
   dictadoList: 'https://n8n.alliasoft.com/webhook/luisres/pedidos/dictado',
   dictadoModificar: 'https://n8n.alliasoft.com/webhook/luis-res/pedidos/dictado/modificar',
   menu: 'https://n8n.alliasoft.com/webhook/luis-res/menu',
@@ -103,23 +96,16 @@ const BINARY_FIELD = 'audio';
 const TARGET_SR = 48000;
 const TARGET_CH = 1;
 
-// Mesas: Solo hasta la 12 + Extras
 const DEFAULT_MESAS = Array.from({ length: 12 }, (_, i) => `M${i + 1}`);
 const EXTRA_MESAS = ['BARRA', 'DOMICILIO'];
 const MESA_OPTIONS = [...DEFAULT_MESAS, ...EXTRA_MESAS];
 
-/** ===== Utilidades generales ===== */
+/** ===== Utilidades Audio / Formato ===== */
 const pickMimeType = () => {
-  const candidates = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/mp4',
-  ];
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
   for (const t of candidates) {
     // @ts-ignore
-    if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t))
-      return t;
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) return t;
   }
   return '';
 };
@@ -129,7 +115,6 @@ const secToClock = (s?: number) =>
 
 const formatPrice = (val: number) => `$${(val || 0).toLocaleString('es-CO')}`;
 
-// Helper de UI para los estados
 const getStatusUI = (estado?: string) => {
   const s = (estado || '').toLowerCase().trim();
   if (s === 'pidiendo') return { card: 'bg-yellow-50 border-yellow-200', badge: 'bg-yellow-100 text-yellow-800' };
@@ -139,7 +124,7 @@ const getStatusUI = (estado?: string) => {
   return { card: 'bg-white border-gray-200', badge: 'bg-gray-100 text-gray-800' };
 };
 
-/** ===== WAV encoder & Audio helpers ===== */
+/* --- Audio Encoding Helpers (WAV) --- */
 function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
   const numCh = buffer.numberOfChannels;
   const sr = buffer.sampleRate;
@@ -207,7 +192,7 @@ async function concatAsWav(clips: Clip[]): Promise<{ blob: Blob; durationSec: nu
   return { blob: wav, durationSec: out.length / out.sampleRate };
 }
 
-/** ===== UTILIDADES DE PARSEO Y IMPRESIÓN ===== */
+/* --- Parsing & Printing Utilities --- */
 const COLS = 42;
 const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join('');
 const padRight = (s: string, n: number) => s.length >= n ? s.slice(0, n) : s + repeat(' ', n - s.length);
@@ -261,7 +246,6 @@ const parseMoneyToInt = (s: string): number => {
   return isNaN(n) ? 0 : n;
 };
 
-// Parseo seguro para paréntesis
 const splitOutsideParens = (s: string, separators = [';']): string[] => {
   const sepSet = new Set(separators);
   const out: string[] = [];
@@ -279,19 +263,15 @@ const splitOutsideParens = (s: string, separators = [';']): string[] => {
 
 const splitByCommaOutsideParens = (s: string): string[] => splitOutsideParens(s, [',']);
 
-// PARSEO: "- 2, Hamburguesa (con queso, tocineta), 25000;"
 const parseDetails = (raw: string) => {
   if (!raw) return [];
   const itemStrings = splitOutsideParens(raw, [';', '\n', '|']).map((x) => x.trim()).filter(Boolean);
-
   return itemStrings.map((itemStr) => {
     const cleanStr = itemStr.replace(/^-+\s*/, '').trim();
     const parts = splitByCommaOutsideParens(cleanStr).map((x) => x.trim()).filter(x => x !== '');
-
     let quantity = '1';
     let name = '';
     let priceNum = 0;
-
     if (parts.length >= 3) {
       quantity = parts[0];
       name = parts.slice(1, parts.length - 1).join(', '); 
@@ -302,10 +282,8 @@ const parseDetails = (raw: string) => {
     } else {
       name = parts[0] || '';
     }
-
     const qMatch = quantity.match(/\d+/);
     if (qMatch) quantity = qMatch[0]; else quantity = '1';
-    
     return { quantity, name, priceNum };
   });
 };
@@ -345,7 +323,7 @@ const formatItemBlock = (qty: string, name: string, priceNum: number): string[] 
   return out;
 };
 
-// ESC/POS Helpers
+// RawBT / ESCPOS Logic
 const bytesToBase64 = (bytes: number[]): string => {
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -401,13 +379,9 @@ const sendToRawBTSections = async (normalBefore: string[], detailLines: string[]
   document.body.removeChild(a);
 };
 
-/** ===== Componente principal ===== */
-const Dictado: React.FC = () => {
-  // --- LOGIN STATE ---
-  const [user, setUser] = useState('');
-  const [pass, setPass] = useState('');
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [meseroName, setMeseroName] = useState('');
+/** ===== COMPONENTE PRINCIPAL ===== */
+// Ahora acepta Props en lugar de tener login interno
+const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
 
   // --- APP STATE ---
   const [restauranteId] = useState('LUISRES');
@@ -439,9 +413,9 @@ const Dictado: React.FC = () => {
 
   // Edición
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editNombre, setEditNombre] = useState(''); // Es el Mesero
-  const [editNumero, setEditNumero] = useState(''); // Es el ID Pedido
-  const [editDireccion, setEditDireccion] = useState(''); // Es la Mesa
+  const [editNombre, setEditNombre] = useState(''); // Mesero
+  const [editNumero, setEditNumero] = useState(''); // ID Pedido
+  const [editDireccion, setEditDireccion] = useState(''); // Mesa
   const [editValorRest, setEditValorRest] = useState(0);
   const [editValorDom, setEditValorDom] = useState(0);
   const [editMetodoPago, setEditMetodoPago] = useState('');
@@ -464,7 +438,7 @@ const Dictado: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch periódico
+  // Fetch periódico (Sin login check)
   const fetchDictadoOrders = useCallback(async () => {
     try {
       const response = await fetch(ENDPOINTS.dictadoList, { cache: 'no-store' });
@@ -476,34 +450,11 @@ const Dictado: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (isLoggedIn) {
-      fetchDictadoOrders();
-      const interval = setInterval(fetchDictadoOrders, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [isLoggedIn, fetchDictadoOrders]);
+    fetchDictadoOrders();
+    const interval = setInterval(fetchDictadoOrders, 15000);
+    return () => clearInterval(interval);
+  }, [fetchDictadoOrders]);
 
-  // Login Handler
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const u = USERS_DB[user.toLowerCase().trim()];
-    if (u && u.pass === pass) {
-      setMeseroName(u.name);
-      setIsLoggedIn(true);
-      setErrorMsg('');
-    } else {
-      setErrorMsg('Usuario o contraseña incorrectos');
-    }
-  };
-
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setUser('');
-    setPass('');
-    setMeseroName('');
-    setClips([]);
-    setRespuesta(null);
-  };
 
   // Fetch Menu
   const fetchMenu = async () => {
@@ -579,6 +530,7 @@ const Dictado: React.FC = () => {
       const fd = new FormData();
       fd.append('restauranteId', restauranteId);
       fd.append('mesaId', mesaId.trim());
+      // USAMOS LA PROP DEL PADRE
       fd.append('meseroId', meseroName);
       fd.append('lang', lang);
       fd.append('id_pedido', id_pedido);
@@ -694,16 +646,11 @@ const Dictado: React.FC = () => {
     }
   };
 
-  /** ===== IMPRESIÓN CORREGIDA ===== */
+  /** ===== IMPRESIÓN ===== */
   const printDictadoOrder = async (order: DictadoOrder) => {
-    // 1. Mapeo de datos según tus indicaciones
     const mesero = sanitizeForTicket(order.nombre || 'Sin Mesero'); 
-    
-    // 'numero' viene como 'p_110241', quitamos el 'p_'
     const rawNumero = order.numero || '';
     const numeroPedido = rawNumero.replace(/^p_/, ''); 
-    
-    // 'direccion' es la Mesa
     const mesa = sanitizeForTicket(order.direccion || 'Barra'); 
 
     const items = parseDetails(order['detalle_pedido'] || '');
@@ -715,7 +662,7 @@ const Dictado: React.FC = () => {
     const detail: string[] = [];
     const after: string[] = [];
 
-    // --- CABECERA DEL TICKET ---
+    // --- CABECERA ---
     before.push(repeat('=', COLS));
     before.push(center('LUIS RES'));
     before.push(center('Cra 37 #109-24'));
@@ -832,26 +779,6 @@ const Dictado: React.FC = () => {
     return Array.from(s).sort();
   }, [menuItems]);
 
-  /** ===== Render: LOGIN ===== */
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-800">Bienvenido a Luis Res</h1>
-            <p className="text-gray-500 text-sm">Inicia sesión para tomar pedidos</p>
-          </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input type="email" value={user} onChange={e => setUser(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2" placeholder="Usuario" />
-            <input type="password" value={pass} onChange={e => setPass(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2" placeholder="Contraseña" />
-            {errorMsg && <div className="text-red-500 text-sm text-center">{errorMsg}</div>}
-            <button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-lg">Ingresar</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   /** ===== Render: MAIN APP ===== */
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -859,12 +786,12 @@ const Dictado: React.FC = () => {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40 px-4 py-3 shadow-sm">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div>
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">Dictado Pedidos</h1>
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">Pedidos Mesa</h1>
             <p className="text-xs text-gray-500">Mesero: <span className="font-bold text-amber-600">{meseroName}</span></p>
           </div>
           <div className="flex gap-2">
-             <button onClick={() => { setClips([]); setRespuesta(null); }} className="p-2 text-gray-600 bg-gray-100 rounded-full hover:bg-gray-200"><RefreshCw size={18} /></button>
-             <button onClick={handleLogout} className="p-2 text-red-600 bg-red-50 rounded-full hover:bg-red-100"><LogOut size={18} /></button>
+             {/* Botón de resetear la grabación/propuesta actual */}
+             <button onClick={() => { setClips([]); setRespuesta(null); }} className="p-2 text-gray-600 bg-gray-100 rounded-full hover:bg-gray-200" title="Limpiar Dictado Actual"><RefreshCw size={18} /></button>
           </div>
         </div>
       </header>
@@ -1018,7 +945,7 @@ const Dictado: React.FC = () => {
                   );
                 }
 
-                /* --- MODO LECTURA CORREGIDO --- */
+                /* --- MODO LECTURA --- */
                 const ui = getStatusUI(order.estado);
                 const numeroPedidoClean = (order.numero || '').replace(/^p_/, '');
                 const nombreMesero = order.nombre || 'Sin Asignar';

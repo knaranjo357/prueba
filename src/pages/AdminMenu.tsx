@@ -1,33 +1,15 @@
+// src/pages/AdminMenu.tsx (o donde tengas MenuTab)
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Search, X as XIcon } from 'lucide-react';
-import { fetchMenuItems } from '../api/menuApi';
-import { MenuItem } from '../types';
-import { formatPrice } from '../utils/dateUtils';
+import { RefreshCw, Search, X as XIcon, Tag, UtensilsCrossed, Filter } from 'lucide-react';
+import { fetchMenuItems } from '../api/menuApi'; // Asegúrate que esta ruta sea correcta en tu proyecto
+import { MenuItem } from '../types'; // Asegúrate que esta ruta sea correcta en tu proyecto
+import { formatPrice } from '../utils/dateUtils'; // Asegúrate que esta ruta sea correcta en tu proyecto
 
 /** APIs */
 const MENU_API = 'https://n8n.alliasoft.com/webhook/luis-res/menu';
 
 /** Tipos */
 type MenuItemWithRow = MenuItem & { row_number?: number };
-
-/** Grid responsivo (igual al original) */
-const GRID_COLS_MOBILE = 1;
-const GRID_COLS_MD = 2;
-const GRID_COLS_DESKTOP = 4;
-
-const GRID_MAP: Record<number, string> = {
-  1: 'grid-cols-1',
-  2: 'grid-cols-2',
-  3: 'grid-cols-3',
-  4: 'grid-cols-4',
-  5: 'grid-cols-5',
-  6: 'grid-cols-6',
-};
-
-const gridColsClass =
-  `${GRID_MAP[GRID_COLS_MOBILE] || 'grid-cols-1'} ` +
-  `md:${GRID_MAP[GRID_COLS_MD] || 'grid-cols-2'} ` +
-  `lg:${GRID_MAP[GRID_COLS_DESKTOP] || 'grid-cols-4'}`;
 
 const MenuTab: React.FC = () => {
   const [menuItems, setMenuItems] = useState<MenuItemWithRow[]>([]);
@@ -82,11 +64,14 @@ const MenuTab: React.FC = () => {
       disponible: nuevoValor,
     };
 
+    // Actualización optimista
     setMenuItems(prev => prev.map(i => (i.id === item.id ? { ...i, disponible: nuevoValor } : i)));
+    
     try {
       await postAvailability(payload);
     } catch (err) {
       console.error(err);
+      // Revertir si falla
       setMenuItems(prev => prev.map(i => (i.id === item.id ? { ...i, disponible: !nuevoValor } : i)));
       alert('No se pudo guardar el cambio. Intenta de nuevo.');
     }
@@ -116,132 +101,190 @@ const MenuTab: React.FC = () => {
   const clearSearch = () => setSearchTerm('');
 
   return (
-    <div className="flex gap-6">
-      {/* Sidebar categorías (fijo) */}
-      <aside className="fixed top-24 left-0 z-20 w-28 sm:w-40 lg:w-64 h-[calc(100vh-6rem)] shrink-0">
-        <div className="h-full">
-          <div className="flex items-center justify-between mb-3 px-2">
-            <h3 className="text-sm font-semibold text-gray-700">Categorías</h3>
+    <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-150px)]">
+      
+      {/* === BARRA LATERAL / SUPERIOR DE FILTROS === */}
+      {/* En Desktop es sidebar sticky, en móvil es bloque superior */}
+      <aside className="lg:w-64 shrink-0">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 lg:sticky lg:top-24">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              <Filter size={18} className="text-gold" /> Filtros
+            </h3>
+            <button
+              onClick={forceFetchMenuItems}
+              disabled={loading}
+              className={`p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-all ${loading ? 'animate-spin' : ''}`}
+              title="Actualizar menú"
+            >
+              <RefreshCw size={18} />
+            </button>
           </div>
 
           {/* Buscador */}
-          <div className="relative mb-3 px-2">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <div className="relative mb-6 group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-gold transition-colors" size={18} />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar..."
-              className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold/30 focus:border-gold/40 text-sm"
+              placeholder="Buscar plato..."
+              className="w-full pl-10 pr-8 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold/30 focus:border-gold/50 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
             />
             {searchTerm && (
               <button
                 onClick={clearSearch}
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-100"
-                title="Limpiar"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-200 text-gray-500"
+                title="Limpiar búsqueda"
               >
                 <XIcon size={14} />
               </button>
             )}
           </div>
 
-          {/* Lista vertical */}
-          <div className="rounded-xl border border-gray-200 bg-white p-2 max-h-[calc(100vh-180px)] overflow-y-auto mx-2">
-            <div className="grid grid-cols-1 gap-2">
+          {/* Lista Categorías */}
+          <div>
+            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Categorías</h4>
+            {/* En móvil usamos flex wrap, en desktop lista vertical */}
+            <div className="flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 scrollbar-hide">
               {allCategories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`rounded-lg border text-xs md:text-sm px-2.5 py-2 transition shadow-sm hover:shadow ${
+                  className={`whitespace-nowrap text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
                     selectedCategory === cat
-                      ? 'bg-gold text-white border-gold'
-                      : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
+                      ? 'bg-gold text-white shadow-md shadow-gold/20 translate-x-1'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:pl-5'
                   }`}
-                  title={cat}
                 >
-                  <span className="block truncate">{cat}</span>
+                  {cat}
+                  {selectedCategory === cat && <span className="bg-white/20 w-2 h-2 rounded-full"></span>}
                 </button>
               ))}
             </div>
           </div>
-
-          {/* Botón actualizar menú */}
-          <div className="px-2">
-            <button
-              onClick={forceFetchMenuItems}
-              className="mt-3 w-full bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-sm"
-              title="Actualizar menú"
-            >
-              <RefreshCw size={16} />
-              Actualizar
-            </button>
-          </div>
         </div>
       </aside>
 
-      {/* Contenido Menú */}
-      <div className="flex-1 min-w-0 ml-28 sm:ml-40 lg:ml-64">
-        <div className={`grid ${gridColsClass} gap-4`}>
-          {visibleMenuItems.map((item) => (
-            <div
-              key={item.id as any}
-              className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-gray-900 mb-1 leading-tight break-words">
-                  {item.nombre}
-                </h3>
+      {/* === CONTENIDO PRINCIPAL (GRID) === */}
+      <div className="flex-1">
+        {/* Header de resultados */}
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-800">
+            Platos <span className="text-gray-400 font-normal text-sm ml-2">({visibleMenuItems.length})</span>
+          </h2>
+          {/* Indicadores visuales pequeños */}
+          <div className="hidden sm:flex gap-4 text-xs text-gray-500">
+             <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Disponible</div>
+             <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300"></span> Agotado</div>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+          {visibleMenuItems.map((item) => {
+            const isAvailable = item.disponible;
 
-                <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                  {item.categorias?.map((categoria: string) => (
-                    <span
-                      key={categoria}
-                      className="bg-gold/10 text-gold px-2 py-0.5 rounded-full text-[11px] font-medium border border-gold/20"
-                    >
-                      {categoria}
-                    </span>
-                  ))}
-                </div>
-              </div>
+            return (
+              <div
+                key={item.id as any}
+                className={`group relative rounded-xl border transition-all duration-300 flex flex-col overflow-hidden ${
+                  isAvailable
+                    ? 'bg-white border-gray-200 hover:shadow-lg hover:-translate-y-1 hover:border-gold/30'
+                    : 'bg-gray-50 border-gray-200 opacity-75 grayscale-[0.5]'
+                }`}
+              >
+                {/* Barra de estado superior (visual) */}
+                <div className={`h-1 w-full ${isAvailable ? 'bg-gold' : 'bg-gray-300'}`} />
 
-              <div className="mt-2 flex items-center justify-between">
-                <p className="font-bold text-gold text-lg tracking-tight">{formatPrice(item.valor)}</p>
-
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`px-2 py-0.5 rounded-full text-[12px] font-medium border ${
-                      item.disponible
-                        ? 'bg-green-50 text-green-700 border-green-200'
-                        : 'bg-red-50 text-red-700 border-red-200'
-                    }`}
-                  >
-                    {item.disponible ? 'Disponible' : 'Agotado'}
+                <div className="p-5 flex flex-col flex-1">
+                  {/* Cabecera Card */}
+                  <div className="flex justify-between items-start gap-2 mb-3">
+                    <h3 className={`font-bold text-lg leading-tight ${isAvailable ? 'text-gray-800' : 'text-gray-500 line-through decoration-gray-400'}`}>
+                      {item.nombre}
+                    </h3>
+                    {/* Switch de disponibilidad */}
+                    <button
+                        onClick={() => updateMenuItemAvailability(item, !item.disponible)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gold/50 focus:ring-offset-2 ${
+                          item.disponible ? 'bg-green-500' : 'bg-gray-300'
+                        }`}
+                        title={item.disponible ? 'Marcar como Agotado' : 'Marcar como Disponible'}
+                      >
+                        <span className="sr-only">Disponibilidad</span>
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            item.disponible ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                    </button>
                   </div>
 
-                  {/* Switch disponibilidad */}
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={item.disponible}
-                    onClick={() => updateMenuItemAvailability(item, !item.disponible)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold/40 ${
-                      item.disponible ? 'bg-green-600' : 'bg-gray-300'
-                    }`}
-                    title={item.disponible ? 'Marcar como agotado' : 'Marcar como disponible'}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                        item.disponible ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
+                  {/* Categorías */}
+                  <div className="flex flex-wrap gap-1.5 mb-4 flex-1 content-start">
+                    {item.categorias?.map((categoria: string) => (
+                      <span
+                        key={categoria}
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                          isAvailable 
+                            ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                            : 'bg-gray-100 text-gray-500 border border-gray-200'
+                        }`}
+                      >
+                        <Tag size={10} className="mr-1" /> {categoria}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Footer Card: Precio */}
+                  <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Precio</span>
+                      <span className={`text-xl font-bold ${isAvailable ? 'text-gray-900' : 'text-gray-400'}`}>
+                        {formatPrice(item.valor)}
+                      </span>
+                    </div>
+                    {!isAvailable && (
+                      <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-md uppercase">
+                        Agotado
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {loading && <div className="text-sm text-gray-500 mt-4">Cargando menú…</div>}
+        {/* Estado Vacío */}
+        {!loading && visibleMenuItems.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <div className="bg-gray-50 p-4 rounded-full mb-4">
+              <UtensilsCrossed size={48} className="opacity-20" />
+            </div>
+            <p className="text-lg font-medium">No se encontraron platos</p>
+            <p className="text-sm opacity-70">Intenta con otra categoría o búsqueda</p>
+            <button 
+              onClick={clearSearch} 
+              className="mt-4 text-gold hover:underline font-medium text-sm"
+            >
+              Limpiar filtros
+            </button>
+          </div>
+        )}
+
+        {/* Loader inicial */}
+        {loading && visibleMenuItems.length === 0 && (
+           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 mt-4">
+             {[...Array(8)].map((_, i) => (
+               <div key={i} className="bg-white h-48 rounded-xl border border-gray-100 animate-pulse p-4">
+                 <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+                 <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+                 <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+                 <div className="mt-12 h-8 bg-gray-200 rounded w-full"></div>
+               </div>
+             ))}
+           </div>
+        )}
       </div>
     </div>
   );

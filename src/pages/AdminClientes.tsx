@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { RefreshCw, Pencil, X, Save, Plus, Search, MessageSquareText } from 'lucide-react';
+import { RefreshCw, Pencil, X, Save, Plus, Search, MessageCircle, MapPin, User, FileText } from 'lucide-react';
 
 interface Cliente {
   row_number?: number;
@@ -11,10 +11,9 @@ interface Cliente {
 }
 
 const CLIENTES_API = 'https://n8n.alliasoft.com/webhook/luis-res/clientes';
-
 const currencyCO = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 
-/** Normaliza el whatsapp a 57XXXXXXXXXX (sin +, espacios, guiones) */
+/** Normaliza el whatsapp a 57XXXXXXXXXX */
 const normalizeWhatsApp = (raw: string): string => {
   const digits = (raw || '').replace(/\D+/g, '');
   if (!digits) return '';
@@ -31,23 +30,17 @@ const AdminClientes: React.FC = () => {
   const [items, setItems] = useState<Cliente[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Edición por fila (key = whatsapp normalizado)
+  // Edición
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
   const [editNombre, setEditNombre] = useState('');
   const [editDireccion, setEditDireccion] = useState('');
   const [editDomicilio, setEditDomicilio] = useState<number>(0);
   const [editNotas, setEditNotas] = useState('');
 
-  // Creación
+  // Creación (Variables separadas para claridad, aunque podríamos reutilizar las de edición)
   const [newWhatsapp, setNewWhatsapp] = useState('');
-  const [newNombre, setNewNombre] = useState('');
-  const [newDireccion, setNewDireccion] = useState('');
-  const [newDomicilio, setNewDomicilio] = useState<number>(0);
-  const [newNotas, setNewNotas] = useState('');
-
-  // Estados de guardado para bloquear botones
-  const [saving, setSaving] = useState(false);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -57,7 +50,7 @@ const AdminClientes: React.FC = () => {
       if (Array.isArray(data)) setItems(data as Cliente[]);
     } catch (e) {
       console.error(e);
-      alert('No se pudieron cargar los clientes.');
+      alert('Error al cargar clientes');
     } finally {
       setLoading(false);
     }
@@ -81,14 +74,15 @@ const AdminClientes: React.FC = () => {
     });
   }, [items, query]);
 
-  // Acciones
+  // --- ACCIONES ---
   const startNew = () => {
     setEditingId('new');
     setNewWhatsapp('');
-    setNewNombre('');
-    setNewDireccion('');
-    setNewDomicilio(0);
-    setNewNotas('');
+    setEditNombre('');
+    setEditDireccion('');
+    setEditDomicilio(0);
+    setEditNotas('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const startEdit = (c: Cliente) => {
@@ -102,430 +96,232 @@ const AdminClientes: React.FC = () => {
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditNombre('');
-    setEditDireccion('');
-    setEditDomicilio(0);
-    setEditNotas('');
-    setNewWhatsapp('');
-    setNewNombre('');
-    setNewDireccion('');
-    setNewDomicilio(0);
-    setNewNotas('');
     setSaving(false);
   };
 
-  // Guardar cambios en cliente existente (whatsapp = key, NO editable)
-  const saveExisting = async (whatsappKey: string) => {
+  const saveClient = async (isNew: boolean, key: string) => {
     if (saving) return;
+    
+    // Validaciones básicas
+    if (isNew) {
+        const wpp = normalizeWhatsApp(newWhatsapp);
+        if (!wpp || wpp.length < 12) {
+            alert('WhatsApp inválido (mínimo 10 dígitos)');
+            return;
+        }
+        if (items.some(i => normalizeWhatsApp(String(i.whatsapp)) === wpp)) {
+            alert('Este cliente ya existe');
+            return;
+        }
+        key = wpp; // Asignar la clave normalizada
+    }
+
     try {
-      if (!whatsappKey) {
-        alert('WhatsApp inválido.');
-        return;
-      }
       setSaving(true);
       const payload = {
-        whatsapp: Number(whatsappKey), // clave (no se cambia)
+        whatsapp: Number(key),
         nombre: (editNombre || '').trim(),
         direccion: (editDireccion || '').trim(),
         domicilio: Number.isFinite(editDomicilio) ? Number(editDomicilio) : 0,
         notas: (editNotas || '').trim(),
       };
+
       const res = await fetch(CLIENTES_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      
       cancelEdit();
       fetchItems();
     } catch (e) {
       console.error(e);
-      alert('No se pudo guardar el cliente.');
+      alert('No se pudo guardar el cliente');
     } finally {
       setSaving(false);
-    }
-  };
-
-  // Guardar nuevo cliente
-  const saveNew = async () => {
-    if (saving) return;
-    try {
-      setSaving(true);
-      const wpp = normalizeWhatsApp(newWhatsapp);
-      if (!wpp || wpp.length < 12) {
-        alert('El WhatsApp es obligatorio y debe ser válido: 57 + 10 dígitos.');
-        return;
-      }
-      const exists = items.some(i => normalizeWhatsApp(String(i.whatsapp ?? '')) === wpp);
-      if (exists) {
-        alert('Ese WhatsApp ya existe. Edita ese cliente.');
-        return;
-      }
-      const payload = {
-        whatsapp: Number(wpp),
-        nombre: (newNombre || '').trim(),
-        direccion: (newDireccion || '').trim(),
-        domicilio: Number.isFinite(newDomicilio) ? Number(newDomicilio) : 0,
-        notas: (newNotas || '').trim(),
-      };
-      const res = await fetch(CLIENTES_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      cancelEdit();
-      fetchItems();
-    } catch (e) {
-      console.error(e);
-      alert('No se pudo crear el cliente.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Enter/Esc en edición
-  const onEditKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
-    whatsappKey?: string
-  ) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (editingId === 'new') saveNew();
-      else if (whatsappKey) saveExisting(whatsappKey);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelEdit();
     }
   };
 
   return (
-    <div className="min-w-0">
-      {/* Barra de acciones sticky (siempre visible) */}
-      <div className="sticky top-24 z-20 bg-white/90 backdrop-blur border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <h2 className="text-xl font-bold text-gray-900">Clientes</h2>
+    <div className="min-w-0 pb-20">
+      {/* === HEADER & TOOLS === */}
+      <div className="sticky top-24 z-20 bg-white/90 backdrop-blur border-b border-gray-100 -mx-4 px-4 py-4 mb-6 shadow-sm">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900">Directorio Clientes</h2>
+            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">{items.length}</span>
+          </div>
 
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:flex-none min-w-[260px]">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Buscar por nombre, WhatsApp o dirección…"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm pl-9"
-                  aria-label="Buscar clientes"
-                  autoComplete="off"
-                />
-                <Search size={16} className="pointer-events-none absolute left-3 top-2.5 text-gray-500" />
-              </div>
-
-              <button
-                onClick={fetchItems}
-                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-60"
-                disabled={loading}
-                title="Actualizar lista"
-              >
-                <RefreshCw size={16} />
-                Actualizar
-              </button>
-
-              <button
-                onClick={startNew}
-                className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm flex items-center gap-2"
-                title="Nuevo cliente"
-              >
-                <Plus size={16} />
-                Nuevo cliente
-              </button>
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            {/* Buscador */}
+            <div className="relative flex-1 md:flex-none min-w-[240px] group">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar nombre o teléfono..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:bg-white shadow-sm pl-10 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                autoComplete="off"
+              />
             </div>
+
+            <button
+              onClick={fetchItems}
+              className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 p-2 rounded-lg shadow-sm transition-colors"
+              title="Actualizar"
+              disabled={loading}
+            >
+              <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+            </button>
+
+            <button
+              onClick={startNew}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow-md shadow-blue-600/20 flex items-center gap-2 transition-transform active:scale-95"
+            >
+              <Plus size={18} />
+              Nuevo Cliente
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Tabla responsive */}
-      <div className="max-w-7xl mx-auto px-4 py-4">
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-          {/* table-fixed + colgroup para que no se rompa la UI al buscar */}
-          <table className="min-w-full text-sm table-fixed">
-            <colgroup>
-              <col className="w-20" />            {/* Acciones */}
-              <col className="w-[14ch]" />        {/* WhatsApp (12 dígitos + ~2 de margen) */}
-              <col className="w-[22ch]" />        {/* Nombre */}
-              <col className="w-[30ch]" />        {/* Dirección */}
-              <col className="w-[14ch]" />        {/* Domicilio */}
-              <col />                              {/* Notas (flexible) */}
-            </colgroup>
-
-            <thead className="bg-gray-50 sticky top-0 z-10">
-              <tr>
-                <th className="px-3 py-3 font-semibold text-gray-700 text-left">
-                  <span className="sr-only">Acciones</span>
-                </th>
-                <th className="text-left px-3 py-3 font-semibold text-gray-700">WhatsApp</th>
-                <th className="text-left px-3 py-3 font-semibold text-gray-700">Nombre</th>
-                <th className="text-left px-3 py-3 font-semibold text-gray-700">Dirección</th>
-                <th className="text-left px-3 py-3 font-semibold text-gray-700">Domicilio</th>
-                <th className="text-left px-3 py-3 font-semibold text-gray-700">Notas</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-gray-100">
-              {/* Fila creación */}
+      {/* === FORMULARIO DE CREACIÓN/EDICIÓN (Expandible) === */}
+      {(editingId !== null) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+               <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                 {editingId === 'new' ? <Plus size={18} className="text-blue-600"/> : <Pencil size={18} className="text-amber-600"/>}
+                 {editingId === 'new' ? 'Agregar Nuevo Cliente' : 'Editar Cliente'}
+               </h3>
+               <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+            </div>
+            
+            <div className="p-6 space-y-4">
               {editingId === 'new' && (
-                <tr className="bg-amber-50/50">
-                  {/* Acciones (Guardar / Cancelar) */}
-                  <td className="px-3 py-2 align-middle">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={saveNew}
-                        className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg font-medium disabled:opacity-60"
-                        title="Guardar"
-                        aria-label="Guardar"
-                        disabled={saving}
-                      >
-                        <Save size={16} />
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="border border-gray-300 rounded-lg p-2 bg-white"
-                        title="Cancelar"
-                        aria-label="Cancelar"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </td>
-
-                  {/* WhatsApp (input un poco más ancho) */}
-                  <td className="px-3 py-2 align-middle">
-                    <input
-                      value={newWhatsapp}
-                      onChange={(e) => setNewWhatsapp(e.target.value)}
-                      onKeyDown={(e) => onEditKeyDown(e)}
-                      placeholder="+57 3xx xxx xxxx"
-                      className="w-[18ch] md:w-[22ch] max-w-full px-3 py-2 border border-amber-300 rounded-md font-mono"
-                      aria-label="WhatsApp nuevo"
-                      autoComplete="off"
-                      inputMode="numeric"
-                    />
-                    <p className="text-[11px] text-gray-500 mt-1">
-                      Guardado como: <strong className="font-mono">{normalizeWhatsApp(newWhatsapp) || '—'}</strong>
-                    </p>
-                  </td>
-
-                  {/* Nombre */}
-                  <td className="px-3 py-2 align-middle">
-                    <input
-                      value={newNombre}
-                      onChange={(e) => setNewNombre(e.target.value)}
-                      onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-full px-3 py-2 border border-amber-300 rounded-md"
-                      placeholder="Nombre"
-                      aria-label="Nombre nuevo"
-                      autoComplete="off"
-                    />
-                  </td>
-
-                  {/* Dirección */}
-                  <td className="px-3 py-2 align-middle">
-                    <input
-                      value={newDireccion}
-                      onChange={(e) => setNewDireccion(e.target.value)}
-                      onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-full px-3 py-2 border border-amber-300 rounded-md"
-                      placeholder="Dirección"
-                      aria-label="Dirección nueva"
-                      autoComplete="off"
-                    />
-                  </td>
-
-                  {/* Domicilio */}
-                  <td className="px-3 py-2 align-middle">
-                    <input
-                      type="number"
-                      min={0}
-                      value={Number.isFinite(newDomicilio) ? newDomicilio : 0}
-                      onChange={(e) => setNewDomicilio(parseInt(e.target.value || '0', 10))}
-                      onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-full px-3 py-2 border border-amber-300 rounded-md"
-                      placeholder="0"
-                      aria-label="Domicilio nuevo"
-                    />
-                  </td>
-
-                  {/* Notas */}
-                  <td className="px-3 py-2 align-middle">
-                    <textarea
-                      value={newNotas}
-                      onChange={(e) => setNewNotas(e.target.value)}
-                      onKeyDown={(e) => onEditKeyDown(e)}
-                      className="w-full px-3 py-2 border border-amber-300 rounded-md"
-                      rows={1}
-                      placeholder="Observaciones"
-                      aria-label="Notas nuevas"
-                    />
-                  </td>
-                </tr>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">WhatsApp (Obligatorio)</label>
+                  <input
+                    value={newWhatsapp}
+                    onChange={(e) => setNewWhatsapp(e.target.value)}
+                    placeholder="310 123 4567"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 outline-none font-mono"
+                    autoFocus
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Se guardará como: {normalizeWhatsApp(newWhatsapp) || '...'}</p>
+                </div>
               )}
+              
+              <div>
+                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre</label>
+                 <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                   <User size={16} className="text-gray-400"/>
+                   <input value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="w-full outline-none" placeholder="Nombre completo"/>
+                 </div>
+              </div>
 
-              {/* Cargando */}
-              {loading && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-3 text-gray-500">Cargando…</td>
-                </tr>
-              )}
+              <div>
+                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Dirección</label>
+                 <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                   <MapPin size={16} className="text-gray-400"/>
+                   <input value={editDireccion} onChange={(e) => setEditDireccion(e.target.value)} className="w-full outline-none" placeholder="Calle 123 #45-67"/>
+                 </div>
+              </div>
 
-              {/* Datos */}
-              {filtered.map((c, index) => {
-                const key = normalizeWhatsApp(String(c.whatsapp ?? ''));
-                const idKey = key || (typeof c.row_number !== 'undefined' ? `row-${c.row_number}` : `idx-${index}`);
-                const isEditing = editingId === key;
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Costo Domicilio</label>
+                   <input type="number" value={editDomicilio} onChange={(e) => setEditDomicilio(Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500"/>
+                </div>
+              </div>
 
-                return (
-                  <tr key={idKey} className="align-top">
-                    {/* Acciones (ícono Editar a la izquierda de WhatsApp) */}
-                    <td className="px-3 py-3">
-                      {!isEditing ? (
-                        <button
-                          onClick={() => startEdit(c)}
-                          className="border border-gray-300 rounded-lg p-2 bg-white"
-                          title="Editar"
-                          aria-label="Editar"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => saveExisting(key)}
-                            className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg font-medium disabled:opacity-60"
-                            title="Guardar"
-                            aria-label="Guardar"
-                            disabled={saving}
-                          >
-                            <Save size={16} />
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            className="border border-gray-300 rounded-lg p-2 bg-white"
-                            title="Cancelar"
-                            aria-label="Cancelar"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
+              <div>
+                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Notas / Observaciones</label>
+                 <textarea value={editNotas} onChange={(e) => setEditNotas(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500 resize-none" rows={2} placeholder="Detalles adicionales..."/>
+              </div>
+            </div>
 
-                    {/* WhatsApp (dos letras más ancho + sin romper diseño) */}
-                    <td className="px-3 py-3 align-middle">
-                      {key ? (
-                        <a
-                          href={`https://wa.me/${encodeURIComponent(key)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline inline-flex items-center gap-1 font-mono tabular-nums whitespace-nowrap"
-                          title="Abrir chat de WhatsApp"
-                        >
-                          <MessageSquareText size={14} />
-                          <span className="inline-block w-[14ch] truncate">{key}</span>
-                        </a>
-                      ) : (
-                        <span className="text-gray-500">—</span>
-                      )}
-                    </td>
-
-                    {/* Nombre */}
-                    <td className="px-3 py-3 align-middle min-w-0">
-                      {!isEditing ? (
-                        <span className="font-medium block truncate">{c.nombre || '—'}</span>
-                      ) : (
-                        <input
-                          value={editNombre}
-                          onChange={(e) => setEditNombre(e.target.value)}
-                          onKeyDown={(e) => onEditKeyDown(e, key)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          autoFocus
-                          aria-label="Editar nombre"
-                          autoComplete="off"
-                        />
-                      )}
-                    </td>
-
-                    {/* Dirección */}
-                    <td className="px-3 py-3 align-middle min-w-0">
-                      {!isEditing ? (
-                        <span className="block truncate">{c.direccion || '—'}</span>
-                      ) : (
-                        <input
-                          value={editDireccion}
-                          onChange={(e) => setEditDireccion(e.target.value)}
-                          onKeyDown={(e) => onEditKeyDown(e, key)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          aria-label="Editar dirección"
-                          autoComplete="off"
-                        />
-                      )}
-                    </td>
-
-                    {/* Domicilio */}
-                    <td className="px-3 py-3 align-middle">
-                      {!isEditing ? (
-                        <span className="tabular-nums font-medium">
-                          {c.domicilio !== '' && c.domicilio !== null && c.domicilio !== undefined
-                            ? currencyCO.format(Number(c.domicilio || 0))
-                            : '—'}
-                        </span>
-                      ) : (
-                        <input
-                          type="number"
-                          min={0}
-                          value={Number.isFinite(editDomicilio) ? editDomicilio : 0}
-                          onChange={(e) => setEditDomicilio(parseInt(e.target.value || '0', 10))}
-                          onKeyDown={(e) => onEditKeyDown(e, key)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          aria-label="Editar domicilio"
-                        />
-                      )}
-                    </td>
-
-                    {/* Notas */}
-                    <td className="px-3 py-3 align-middle min-w-0">
-                      {!isEditing ? (
-                        <span className="block truncate">{c.notas || '—'}</span>
-                      ) : (
-                        <textarea
-                          value={editNotas}
-                          onChange={(e) => setEditNotas(e.target.value)}
-                          onKeyDown={(e) => onEditKeyDown(e, key)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          rows={1}
-                          aria-label="Editar notas"
-                        />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {/* Sin resultados */}
-              {!loading && filtered.length === 0 && editingId !== 'new' && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-gray-500">
-                    No hay clientes que coincidan con la búsqueda.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
+              <button onClick={cancelEdit} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-200 rounded-lg">Cancelar</button>
+              <button 
+                onClick={() => saveClient(editingId === 'new', editingId === 'new' ? '' : editingId)}
+                disabled={saving}
+                className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
+              >
+                {saving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={18}/>}
+                Guardar
+              </button>
+            </div>
+          </div>
         </div>
+      )}
 
-        <p className="mt-2 text-xs text-gray-500">
-          Consejo: toca <span className="font-medium">Editar</span> (ícono ✏️), modifica y presiona{' '}
-          <kbd className="px-1 border rounded">Enter</kbd> para guardar o{' '}
-          <kbd className="px-1 border rounded">Esc</kbd> para cancelar. El <strong>WhatsApp no es editable</strong>.
-        </p>
+      {/* === GRID DE TARJETAS === */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {loading && items.length === 0 && (
+          [...Array(6)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 h-32 animate-pulse flex flex-col gap-2">
+               <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+               <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+               <div className="h-8 bg-gray-200 rounded w-full mt-auto"></div>
+            </div>
+          ))
+        )}
+
+        {filtered.map((c, index) => {
+          const key = normalizeWhatsApp(String(c.whatsapp ?? ''));
+          const idKey = key || `idx-${index}`;
+
+          return (
+            <div key={idKey} className="group bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all p-4 flex flex-col relative">
+              <div className="flex justify-between items-start mb-2">
+                 <h3 className="font-bold text-gray-900 truncate pr-8" title={c.nombre}>{c.nombre || 'Sin Nombre'}</h3>
+                 <button 
+                   onClick={() => startEdit(c)}
+                   className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                 >
+                   <Pencil size={16}/>
+                 </button>
+              </div>
+
+              <div className="space-y-1.5 mb-4 flex-1">
+                 {key ? (
+                   <a href={`https://wa.me/${key}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-green-600 font-medium hover:underline w-fit">
+                     <MessageCircle size={14}/> +{key}
+                   </a>
+                 ) : <span className="text-xs text-gray-400 italic">Sin WhatsApp</span>}
+                 
+                 <p className="text-sm text-gray-600 flex items-start gap-2">
+                   <MapPin size={14} className="mt-0.5 shrink-0 text-gray-400"/>
+                   <span className="line-clamp-2">{c.direccion || 'Sin dirección'}</span>
+                 </p>
+                 
+                 {c.notas && (
+                   <p className="text-xs text-gray-500 flex items-start gap-2 bg-gray-50 p-1.5 rounded mt-2">
+                     <FileText size={12} className="mt-0.5 shrink-0"/>
+                     <span className="line-clamp-2">{c.notas}</span>
+                   </p>
+                 )}
+              </div>
+
+              <div className="pt-3 border-t border-gray-100 flex items-center justify-between mt-auto">
+                 <div className="text-xs text-gray-400 font-medium uppercase">
+                    Domicilio: <span className="text-gray-700 font-bold ml-1">{c.domicilio ? currencyCO.format(Number(c.domicilio)) : '$0'}</span>
+                 </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {!loading && filtered.length === 0 && (
+          <div className="col-span-full py-12 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+            <User size={48} className="mx-auto mb-2 opacity-20"/>
+            <p>No se encontraron clientes</p>
+            <button onClick={startNew} className="mt-2 text-blue-500 hover:underline font-medium">Crear nuevo cliente</button>
+          </div>
+        )}
       </div>
     </div>
   );
