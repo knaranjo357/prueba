@@ -14,13 +14,10 @@ import {
   Wand2,
   Loader2,
   RefreshCw,
-  Printer,
-  Search,
-  Plus,
-  Minus,
-  X,
-  ShoppingBasket
 } from 'lucide-react';
+
+// IMPORTANTE: Importamos la Tarjeta reutilizable
+import TarjetaPedido, { Order, CartItem, MenuItem } from './TarjetaPedido';
 
 /** ===== Tipos ===== */
 type Clip = {
@@ -48,35 +45,11 @@ type DictadoResponse = {
   extra?: any;
 };
 
-interface DictadoOrder {
-  row_number: number;
-  id_pedido?: string; 
-  fecha: string;
-  nombre?: string;   // MESERO
-  numero: string;    // ID PEDIDO
-  direccion: string; // MESA
-  'detalle_pedido': string;
-  valor_restaurante: number;
-  valor_domicilio: number;
-  metodo_pago: string;
-  estado: string;
+// Extendemos o compatibilizamos con el tipo Order de TarjetaPedido
+interface DictadoOrder extends Order {
+  // Propiedades específicas si las hubiera, pero Order cubre la mayoría.
+  // En Dictado: 'nombre' = Mesero, 'direccion' = Mesa, 'numero' = ID Pedido
 }
-
-type MenuItem = {
-  id: number | string;
-  nombre: string;
-  valor: number;
-  categorias: string[];
-  disponible: boolean;
-  descripcion?: string;
-  row_number?: number;
-};
-
-type CartItem = {
-  name: string;
-  quantity: number;
-  priceUnit: number;
-};
 
 // PROPS: Recibimos el nombre del usuario logueado en Admin
 interface DictadoProps {
@@ -100,7 +73,11 @@ const DEFAULT_MESAS = Array.from({ length: 12 }, (_, i) => `M${i + 1}`);
 const EXTRA_MESAS = ['BARRA', 'DOMICILIO'];
 const MESA_OPTIONS = [...DEFAULT_MESAS, ...EXTRA_MESAS];
 
-/** ===== Utilidades Audio / Formato ===== */
+/** ===== Utilidades Audio / Formato para Impresión ===== */
+// NOTA: Mantenemos helpers de impresión aquí porque la impresión de Dictado
+// es ligeramente diferente a la de Domicilios (Muestra Mesero/Mesa), 
+// aunque reutilicemos la Tarjeta visual.
+
 const pickMimeType = () => {
   const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
   for (const t of candidates) {
@@ -114,15 +91,6 @@ const secToClock = (s?: number) =>
   s == null ? '—' : `${Math.floor(s / 60)}`.padStart(2, '0') + ':' + `${Math.floor(s % 60)}`.padStart(2, '0');
 
 const formatPrice = (val: number) => `$${(val || 0).toLocaleString('es-CO')}`;
-
-const getStatusUI = (estado?: string) => {
-  const s = (estado || '').toLowerCase().trim();
-  if (s === 'pidiendo') return { card: 'bg-yellow-50 border-yellow-200', badge: 'bg-yellow-100 text-yellow-800' };
-  if (s === 'confirmado') return { card: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-800' };
-  if (s === 'impreso') return { card: 'bg-green-100 border-green-300', badge: 'bg-green-200 text-green-900' };
-  if (s === 'entregado') return { card: 'bg-gray-50 border-gray-200', badge: 'bg-gray-200 text-gray-800' };
-  return { card: 'bg-white border-gray-200', badge: 'bg-gray-100 text-gray-800' };
-};
 
 /* --- Audio Encoding Helpers (WAV) --- */
 function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
@@ -192,7 +160,7 @@ async function concatAsWav(clips: Clip[]): Promise<{ blob: Blob; durationSec: nu
   return { blob: wav, durationSec: out.length / out.sampleRate };
 }
 
-/* --- Parsing & Printing Utilities --- */
+/* --- Parsing & Printing Utilities (Para función de Impresión Interna) --- */
 const COLS = 42;
 const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join('');
 const padRight = (s: string, n: number) => s.length >= n ? s.slice(0, n) : s + repeat(' ', n - s.length);
@@ -380,7 +348,6 @@ const sendToRawBTSections = async (normalBefore: string[], detailLines: string[]
 };
 
 /** ===== COMPONENTE PRINCIPAL ===== */
-// Ahora acepta Props en lugar de tener login interno
 const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
 
   // --- APP STATE ---
@@ -411,20 +378,18 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
   const [sortBy, setSortBy] = useState<'fecha' | 'row_number'>('row_number');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  // Edición
+  // Edición (Compatible con TarjetaPedido)
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editNombre, setEditNombre] = useState(''); // Mesero
+  const [editNombre, setEditNombre] = useState(''); // Mesero en este contexto
   const [editNumero, setEditNumero] = useState(''); // ID Pedido
   const [editDireccion, setEditDireccion] = useState(''); // Mesa
   const [editValorRest, setEditValorRest] = useState(0);
   const [editValorDom, setEditValorDom] = useState(0);
   const [editMetodoPago, setEditMetodoPago] = useState('');
-  // Estado edición visual
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   
   // MENU
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [menuLoading, setMenuLoading] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
   const [menuCat, setMenuCat] = useState('Todas');
 
@@ -438,7 +403,7 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch periódico (Sin login check)
+  // Fetch periódico
   const fetchDictadoOrders = useCallback(async () => {
     try {
       const response = await fetch(ENDPOINTS.dictadoList, { cache: 'no-store' });
@@ -455,10 +420,8 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
     return () => clearInterval(interval);
   }, [fetchDictadoOrders]);
 
-
   // Fetch Menu
   const fetchMenu = async () => {
-    setMenuLoading(true);
     try {
       const res = await fetch(ENDPOINTS.menu);
       const data = await res.json();
@@ -467,8 +430,6 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
       }
     } catch (e) {
       console.error('Error menu', e);
-    } finally {
-      setMenuLoading(false);
     }
   };
 
@@ -530,7 +491,6 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
       const fd = new FormData();
       fd.append('restauranteId', restauranteId);
       fd.append('mesaId', mesaId.trim());
-      // USAMOS LA PROP DEL PADRE
       fd.append('meseroId', meseroName);
       fd.append('lang', lang);
       fd.append('id_pedido', id_pedido);
@@ -566,24 +526,29 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
     }
   };
 
-  /** ===== Edición ===== */
-  const startEdit = (o: DictadoOrder) => {
+  /** ===== Edición (Adaptadores para TarjetaPedido) ===== */
+  const startEdit = (o: Order) => {
+    // Casteamos 'o' como DictadoOrder para acceder a propiedades específicas si es necesario
+    // En TarjetaPedido, 'nombre' es editNombre. En Dictado, 'nombre' es Mesero.
     setEditingId(o.row_number);
-    setEditNombre(o.nombre || '');
-    setEditNumero(o.numero || '');
-    setEditDireccion(o.direccion || '');
-    setCartItems(parseDetailsToCart(o['detalle_pedido'] || ''));
+    setEditNombre(o.nombre || ''); 
+    setEditNumero(o.numero || ''); // ID Pedido
+    setEditDireccion(o.direccion || ''); // Mesa
+    setCartItems(parseDetailsToCart(o['detalle pedido'] || ''));
     setEditValorRest(o.valor_restaurante || 0);
     setEditValorDom(o.valor_domicilio || 0);
     setEditMetodoPago(o.metodo_pago || '');
   };
 
+  const cancelEdit = () => {
+    setEditingId(null);
+    setCartItems([]);
+  };
+
   const addItemToCart = (menuItem: MenuItem) => {
     setCartItems(prev => {
       const exists = prev.find(i => i.name === menuItem.nombre);
-      if (exists) {
-        return prev.map(i => i.name === menuItem.nombre ? { ...i, quantity: i.quantity + 1 } : i);
-      }
+      if (exists) return prev.map(i => i.name === menuItem.nombre ? { ...i, quantity: i.quantity + 1 } : i);
       return [...prev, { name: menuItem.nombre, quantity: 1, priceUnit: menuItem.valor }];
     });
   };
@@ -607,33 +572,39 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
     }
   }, [cartItems, editingId]);
 
-  const saveEdit = async (o: DictadoOrder) => {
+  const saveEdit = async (o: Order) => {
     const detailString = serializeCartToDetails(cartItems);
+    // Map back to DictadoOrder structure
     const updated: Partial<DictadoOrder> = {
-      nombre: editNombre,
-      numero: editNumero,
-      direccion: editDireccion,
-      'detalle_pedido': detailString,
+      nombre: editNombre,       // Mesero
+      numero: editNumero,       // ID Pedido (Asegúrate que TarjetaPedido te permite editar numero, si no, usa el valor original)
+      direccion: editDireccion, // Mesa
+      'detalle_pedido': detailString, // Nota: TarjetaPedido usa 'detalle pedido' (con espacio) usualmente, asegurate de la consistencia
       valor_restaurante: editValorRest,
       valor_domicilio: editValorDom,
       metodo_pago: editMetodoPago,
     };
-    setDictadoOrders(prev => prev.map(x => x.row_number === o.row_number ? { ...x, ...updated } as DictadoOrder : x));
+    
+    // Mapeo para consistencia local
+    const dictadoOrderUpdate = { ...o, ...updated, "detalle_pedido": detailString } as DictadoOrder;
+
+    setDictadoOrders(prev => prev.map(x => x.row_number === o.row_number ? dictadoOrderUpdate : x));
+    setEditingId(null);
+
     try {
       await fetch(ENDPOINTS.dictadoModificar, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...o, ...updated }),
+        body: JSON.stringify(dictadoOrderUpdate),
       });
-      setEditingId(null);
     } catch (e) {
       alert('Error guardando cambios');
       fetchDictadoOrders();
     }
   };
 
-  const updateOrderEstado = async (order: DictadoOrder, newStatus: string) => {
-    const updated = { ...order, estado: newStatus };
+  const updateOrderEstado = async (order: Order, newStatus: string) => {
+    const updated = { ...order, estado: newStatus } as DictadoOrder;
     setDictadoOrders((prev) => prev.map((o) => (o.row_number === order.row_number ? updated : o)));
     try {
       await fetch(ENDPOINTS.dictadoModificar, {
@@ -646,14 +617,19 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
     }
   };
 
-  /** ===== IMPRESIÓN ===== */
-  const printDictadoOrder = async (order: DictadoOrder) => {
+  /** ===== IMPRESIÓN ESPECÍFICA DE DICTADO ===== */
+  // Esta función se pasa a TarjetaPedido. 
+  // Se mantiene aquí porque el formato de Ticket de Dictado (Mesa/Mesero) es distinto al de Domicilios.
+  const printDictadoOrder = async (order: Order) => {
     const mesero = sanitizeForTicket(order.nombre || 'Sin Mesero'); 
     const rawNumero = order.numero || '';
     const numeroPedido = rawNumero.replace(/^p_/, ''); 
-    const mesa = sanitizeForTicket(order.direccion || 'Barra'); 
+    const mesa = sanitizeForTicket(order.direccion || 'Barra'); // En Dictado, direccion es Mesa
 
-    const items = parseDetails(order['detalle_pedido'] || '');
+    // Usamos 'detalle_pedido' o 'detalle pedido' según venga del objeto Order
+    const detalleRaw = order['detalle pedido'] || (order as any)['detalle_pedido'] || '';
+    const items = parseDetails(detalleRaw);
+    
     const subtotal = order.valor_restaurante || 0;
     const domicilio = order.valor_domicilio || 0;
     const total = subtotal + domicilio;
@@ -773,6 +749,7 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
       return matchSearch && matchCat;
     });
   }, [menuItems, menuSearch, menuCat]);
+
   const categories = useMemo(() => {
     const s = new Set<string>(['Todas']);
     menuItems.forEach(i => i.categorias.forEach(c => s.add(c)));
@@ -848,7 +825,7 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
           </div>
         </div>
 
-        {/* RESUMEN PREVIO */}
+        {/* RESUMEN PREVIO (PROPUESTA) */}
         {respuesta && (
           <div id="resumen" className="bg-white rounded-xl shadow-sm border border-green-200 p-4 md:p-6 relative overflow-hidden">
             <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Wand2 className="text-green-600" size={20} />Propuesta de Pedido</h2>
@@ -876,7 +853,7 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
           </div>
         )}
 
-        {/* LISTA DE PEDIDOS */}
+        {/* LISTA DE PEDIDOS REUSANDO TARJETA PEDIDO */}
         <div className="space-y-4">
           <div className="flex justify-between items-center">
              <h2 className="text-xl font-bold text-gray-800">Pedidos Activos</h2>
@@ -892,135 +869,44 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
              </div>
           </div>
 
-          <div className="grid gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {dictadoOrders
               .filter(o => filterStatus === 'todos' || o.estado === filterStatus)
               .sort((a,b) => sortBy === 'row_number' ? (sortDir === 'asc' ? a.row_number - b.row_number : b.row_number - a.row_number) : 0)
-              .map((order) => {
-                const isEditing = editingId === order.row_number;
-                const parsed = parseDetails(order['detalle_pedido'] || '');
-                const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
-                
-                // --- MODO EDICIÓN ---
-                if (isEditing) {
-                  return (
-                    <div key={order.row_number} className="bg-white border-2 border-amber-400 rounded-xl p-4 shadow-lg">
-                      <div className="flex justify-between items-start mb-4">
-                        <h3 className="font-bold text-lg text-amber-600">Editando Pedido #{order.row_number}</h3>
-                        <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
-                      </div>
-                      <div className="grid md:grid-cols-2 gap-6">
-                        <div className="space-y-3">
-                           <div><label className="block text-xs font-bold text-gray-500">Mesero (Nombre)</label><input value={editNombre} onChange={e => setEditNombre(e.target.value)} className="w-full border rounded p-2" /></div>
-                           <div className="grid grid-cols-2 gap-2">
-                             <div><label className="block text-xs font-bold text-gray-500">ID (Número)</label><input value={editNumero} onChange={e => setEditNumero(e.target.value)} className="w-full border rounded p-2" /></div>
-                             <div><label className="block text-xs font-bold text-gray-500">Pago</label><input value={editMetodoPago} onChange={e => setEditMetodoPago(e.target.value)} className="w-full border rounded p-2" /></div>
-                           </div>
-                           <div><label className="block text-xs font-bold text-gray-500">Mesa (Dirección)</label><input value={editDireccion} onChange={e => setEditDireccion(e.target.value)} className="w-full border rounded p-2" /></div>
-                        </div>
-                        {/* EDITOR DE CARRITO + MENÚ */}
-                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 h-[400px] flex flex-col">
-                          <div className="flex items-center justify-between mb-2"><span className="font-bold text-sm text-gray-700 flex items-center gap-2"><ShoppingBasket size={16}/> Canasta</span><span className="font-bold text-amber-600">{formatPrice(editValorRest)}</span></div>
-                          <div className="flex-1 overflow-y-auto mb-4 space-y-2 pr-1 bg-white p-2 rounded border">
-                            {cartItems.map((item, idx) => (
-                              <div key={idx} className="flex items-center justify-between text-sm">
-                                <div className="flex items-center gap-2"><button onClick={() => decreaseItem(idx)} className="w-6 h-6 flex items-center justify-center bg-red-100 text-red-600 rounded-full"><Minus size={12}/></button><span className="font-bold w-4 text-center">{item.quantity}</span><button onClick={() => addItemToCart({ nombre: item.name, valor: item.priceUnit } as any)} className="w-6 h-6 flex items-center justify-center bg-green-100 text-green-600 rounded-full"><Plus size={12}/></button></div>
-                                <div className="flex-1 mx-2 truncate">{item.name}</div>
-                                <div className="text-gray-500 text-xs">{formatPrice(item.quantity * item.priceUnit)}</div>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="border-t border-gray-200 pt-2">
-                            <div className="relative mb-2"><Search size={14} className="absolute left-2 top-2.5 text-gray-400" /><input placeholder="Buscar en menú..." className="w-full pl-8 py-2 text-sm border rounded-lg outline-none" value={menuSearch} onChange={e => setMenuSearch(e.target.value)}/></div>
-                            <div className="flex gap-1 overflow-x-auto pb-2 mb-1 scrollbar-hide">{categories.map(c => (<button key={c} onClick={() => setMenuCat(c)} className={`whitespace-nowrap px-2 py-1 rounded text-[10px] uppercase font-bold ${menuCat === c ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-600'}`}>{c}</button>))}</div>
-                            <div className="h-32 overflow-y-auto grid grid-cols-2 gap-2 pr-1">{filteredMenu.map(m => (<button key={m.id} onClick={() => addItemToCart(m)} className="text-left p-2 bg-white border rounded hover:bg-amber-50 flex flex-col"><span className="font-medium text-xs truncate w-full">{m.nombre}</span><span className="text-[10px] text-gray-500">{formatPrice(m.valor)}</span></button>))}</div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-4 flex gap-3 justify-end">
-                        <button onClick={() => setEditingId(null)} className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg font-bold">Cancelar</button>
-                        <button onClick={() => saveEdit(order)} className="px-4 py-2 text-white bg-green-600 rounded-lg font-bold shadow-sm">Guardar Cambios</button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                /* --- MODO LECTURA --- */
-                const ui = getStatusUI(order.estado);
-                const numeroPedidoClean = (order.numero || '').replace(/^p_/, '');
-                const nombreMesero = order.nombre || 'Sin Asignar';
-                const ubicacionMesa = order.direccion || 'Sin Mesa';
+              .map((dictadoOrder) => {
+                // Convertimos 'detalle_pedido' a 'detalle pedido' si es necesario para compatibilidad con el tipo Order
+                const orderForCard = {
+                  ...dictadoOrder,
+                  "detalle pedido": dictadoOrder['detalle_pedido'] || dictadoOrder['detalle pedido']
+                } as unknown as Order;
 
                 return (
-                  <div key={order.row_number} className={`rounded-lg shadow-sm border p-4 ${ui.card}`}>
+                  <TarjetaPedido
+                    key={dictadoOrder.row_number}
+                    order={orderForCard}
+                    isEditing={editingId === dictadoOrder.row_number}
                     
-                    {/* HEADER TARJETA */}
-                    <div className="flex items-start justify-between mb-4 gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-gray-900 text-lg">MESA: {ubicacionMesa}</h3>
-                          <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-md font-mono">
-                            #{numeroPedidoClean}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">{order.fecha}</p>
-                        <p className="text-xs text-amber-700 font-bold mt-1">Mesero: {nombreMesero}</p>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-2">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${ui.badge}`}>{order.estado}</span>
-                        <button onClick={() => startEdit(order)} className="border border-amber-300 text-amber-600 bg-white px-3 py-1 rounded text-xs hover:bg-amber-50 font-bold shadow-sm">
-                          Editar Pedido
-                        </button>
-                      </div>
-                    </div>
+                    // State Edición
+                    editNombre={editNombre} setEditNombre={setEditNombre}
+                    editDireccion={editDireccion} setEditDireccion={setEditDireccion}
+                    editValorRest={editValorRest}
+                    editValorDom={editValorDom} setEditValorDom={setEditValorDom}
+                    editMetodoPago={editMetodoPago} setEditMetodoPago={setEditMetodoPago}
+                    cartItems={cartItems} setCartItems={setCartItems}
                     
-                    {/* BODY TARJETA */}
-                    <div className="mb-4">
-                       <p className="text-xs text-gray-400 mb-1 uppercase font-bold tracking-wider">Consumo</p>
-                       <div className="bg-white/50 p-0 rounded-lg text-sm">
-                         <div className="space-y-1">
-                           {parsed.map((p, idx) => (
-                             <div key={idx} className="flex justify-between items-start border-b border-gray-100 pb-1 last:border-0">
-                               <div className="flex gap-2">
-                                 <span className="font-bold text-gray-900 min-w-[1.5rem]">{p.quantity}</span>
-                                 <span className="text-gray-800 break-words leading-tight">{p.name}</span>
-                               </div>
-                               <span className="text-gray-600 whitespace-nowrap text-xs mt-0.5">{formatPrice(p.priceNum)}</span>
-                             </div>
-                           ))}
-                         </div>
-                      </div>
-                    </div>
-
-                    {/* FOOTER TARJETA */}
-                    <div className="flex items-center justify-between flex-wrap gap-3 border-t border-gray-200 pt-3">
-                      <div className="flex flex-col">
-                         <span className="text-xs text-gray-500">Total a cobrar</span>
-                         <span className="font-bold text-xl text-gray-900">{formatPrice(total)}</span>
-                         {order.valor_domicilio > 0 && (
-                           <span className="text-xs text-red-500 font-medium">+ Recargo: {formatPrice(order.valor_domicilio)}</span>
-                         )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                         <select 
-                          value={order.estado} 
-                          onChange={(e) => updateOrderEstado(order, e.target.value)}
-                          className="bg-gray-50 border-none text-xs font-bold text-gray-600 rounded focus:ring-0 cursor-pointer hover:bg-gray-200 transition-colors py-2"
-                        >
-                          <option value="pidiendo">Pidiendo</option>
-                          <option value="confirmado">Confirmado</option>
-                          <option value="impreso">Impreso</option>
-                          <option value="entregado">Entregado</option>
-                        </select>
-
-                        <button onClick={() => printDictadoOrder(order)} className="bg-gray-900 hover:bg-black text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95">
-                          <Printer size={18} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                    // Menú y Filtros
+                    menuSearch={menuSearch} setMenuSearch={setMenuSearch}
+                    menuCat={menuCat} setMenuCat={setMenuCat}
+                    filteredMenu={filteredMenu} categories={categories}
+                    addItemToCart={addItemToCart} decreaseItem={decreaseItem}
+                    
+                    // Acciones
+                    onCancelEdit={cancelEdit}
+                    onSaveEdit={() => saveEdit(orderForCard)}
+                    onStartEdit={() => startEdit(orderForCard)}
+                    onPrint={() => printDictadoOrder(orderForCard)}
+                    onStatusChange={updateOrderEstado}
+                  />
                 );
               })}
           </div>
