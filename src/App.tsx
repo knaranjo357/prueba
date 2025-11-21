@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { MenuProvider } from './context/MenuContext';
 import { CartProvider } from './context/CartContext';
@@ -9,7 +8,6 @@ import Footer from './components/Footer';
 import Kitchen from './pages/Kitchen';
 import Despacho from './pages/Despacho';
 import Admin from './pages/Admin';
-import Dictado from './pages/DictadoPage';
 
 function App() {
   return (
@@ -18,7 +16,6 @@ function App() {
         <Route path="/kitchen" element={<Kitchen />} />
         <Route path="/despacho" element={<Despacho />} />
         <Route path="/admin" element={<Admin />} />
-        <Route path="/dictado" element={<Dictado />} />
         <Route path="/" element={
           <MenuProvider>
             <CartProvider>
