@@ -6,7 +6,7 @@ import TarjetaPedido, { Order, CartItem, MenuItem } from './TarjetaPedido';
 const ORDERS_API = 'https://n8n.alliasoft.com/webhook/luis-res/pedidos';
 const MENU_API = 'https://n8n.alliasoft.com/webhook/luis-res/menu';
 
-/** ===== HELPERS DE IMPRESION (Copiados de tu version antigua) ===== */
+/** ===== HELPERS DE IMPRESION (CORREGIDOS) ===== */
 const COLS = 42;
 const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join('');
 const padRight = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + repeat(' ', n - s.length));
@@ -17,14 +17,19 @@ const center = (s: string) => {
 };
 
 const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
-const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
 
-const sanitizeForTicket = (s: string): string =>
-  (s || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, ' ').replace(/[^\S\n]+/g, ' ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+// CORRECCIÓN 1: Convertir a String explícitamente para evitar error con números de teléfono
+const cleanPhone = (raw: any) => String(raw || '').replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
 
-const wrapText = (text: string, width: number): string[] => {
-  if (width <= 0) return [text];
-  const rawTokens = (text || '').trim().split(/\s+/).filter(Boolean);
+// CORRECCIÓN 2: Convertir a String antes de usar replace para evitar error con direcciones numéricas (ej: 12016)
+const sanitizeForTicket = (s: any): string =>
+  String(s || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, ' ').replace(/[^\S\n]+/g, ' ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+
+// CORRECCIÓN 3: Asegurar que wrapText reciba string
+const wrapText = (text: any, width: number): string[] => {
+  const str = String(text || '');
+  if (width <= 0) return [str];
+  const rawTokens = str.trim().split(/\s+/).filter(Boolean);
   const tokens: string[] = [];
   for (const t of rawTokens) {
     if (t.length <= width) tokens.push(t);
@@ -62,10 +67,11 @@ const totalLine = (label: string, amount: number): string => {
 };
 
 // Helpers de Parseo de detalles para Impresión
-const parseMoneyToInt = (s: string): number => {
-  const n = parseInt((s || '').replace(/[^0-9\-]/g, ''), 10);
+const parseMoneyToInt = (s: string | number): number => {
+  const n = parseInt(String(s || '').replace(/[^0-9\-]/g, ''), 10);
   return isNaN(n) ? 0 : n;
 };
+
 const splitOutsideParens = (s: string, separators = [';']): string[] => {
   const sepSet = new Set(separators);
   const out: string[] = [];
@@ -438,10 +444,10 @@ const OrdersTab: React.FC = () => {
         <div class="hr"></div>
         <div class="meta">
           <div class="kv"><span class="k">PEDIDO</span><span class="v">#${order.row_number}</span></div>
-          <div class="kv"><span class="k">Fecha</span><span class="v">${esc(order.fecha || '')}</span></div>
+          <div class="kv"><span class="k">Fecha</span><span class="v">${esc(sanitizeForTicket(order.fecha))}</span></div>
           <div class="kv"><span class="k">Cliente</span><span class="v">${esc(customerName)}</span></div>
           <div class="kv"><span class="k">Teléfono</span><span class="v">${esc(customerPhone)}</span></div>
-          <div class="kv"><span class="k">Dirección</span><span class="v">${esc(order.direccion || '')}</span></div>
+          <div class="kv"><span class="k">Dirección</span><span class="v">${esc(sanitizeForTicket(order.direccion))}</span></div>
         </div>
         <div class="hr"></div>
         <div class="section-title">DETALLE DEL PEDIDO</div>
@@ -453,8 +459,8 @@ const OrdersTab: React.FC = () => {
           <div class="row strong"><span>TOTAL</span><span class="val">${esc(money(total))}</span></div>
         </div>
         <div class="extra">
-          <div class="kv"><span class="k">Método de pago</span><span class="v">${esc(order.metodo_pago || '')}</span></div>
-          <div class="kv"><span class="k">Estado</span><span class="v">${esc(order.estado || '')}</span></div>
+          <div class="kv"><span class="k">Método de pago</span><span class="v">${esc(sanitizeForTicket(order.metodo_pago))}</span></div>
+          <div class="kv"><span class="k">Estado</span><span class="v">${esc(sanitizeForTicket(order.estado))}</span></div>
         </div>
         <div class="hr"></div>
         <div class="footer">¡Gracias por su compra!</div>

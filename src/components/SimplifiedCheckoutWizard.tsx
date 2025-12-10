@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Truck, Store, Search, DollarSign, Send, CreditCard, User, MapPin, Check, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Truck, Store, Search, DollarSign, Send, CreditCard, User, MapPin } from 'lucide-react';
 import { CustomerInfo } from '../types';
 import { useCart } from '../context/CartContext';
 import { formatPrice, calculateTotalPrice } from '../utils/dateUtils';
@@ -26,12 +26,12 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [deliveryAreas, setDeliveryAreas] = useState<any[]>([]);
   const [loadingAreas, setLoadingAreas] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
 
-  // Detectar teclado en móviles
+  /** Detectar escritura/teclado para compactar UI */
+  const [isTyping, setIsTyping] = useState(false);
   useEffect(() => {
     const onFocusIn = () => setIsTyping(true);
-    const onFocusOut = () => setTimeout(() => setIsTyping(false), 150); // Un poco más de delay para evitar saltos
+    const onFocusOut = () => setTimeout(() => setIsTyping(false), 120);
     window.addEventListener('focusin', onFocusIn);
     window.addEventListener('focusout', onFocusOut);
     return () => {
@@ -46,9 +46,7 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
     : 0;
 
   const totalSteps = customerInfo.deliveryType === 'delivery' ? 4 : 3;
-  const progressPercentage = (currentStep / totalSteps) * 100;
 
-  // Cargar áreas
   useEffect(() => {
     const loadDeliveryAreas = async () => {
       try {
@@ -64,7 +62,6 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
     loadDeliveryAreas();
   }, []);
 
-  // LocalStorage Logic
   useEffect(() => {
     const savedInfo = localStorage.getItem('customerInfo');
     if (savedInfo) {
@@ -94,7 +91,6 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
     }
   }, [customerInfo]);
 
-  // Filtrado de barrios
   const filteredNeighborhoods = useMemo(() => {
     return deliveryAreas
       .filter(neighborhood =>
@@ -108,7 +104,6 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
     setCustomerInfo(prev => ({ ...prev, neighborhood, city: 'Bucaramanga' }));
   };
 
-  // Validaciones
   const canProceedToNext = () => {
     switch (currentStep) {
       case 1: return true;
@@ -151,389 +146,382 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
     return Boolean(customerInfo.name.trim() && customerInfo.phone.trim());
   };
 
+  /** Asegura que el input quede visible al abrir teclado */
   const handleFieldFocus = (e: React.FocusEvent<HTMLElement>) => {
     try {
       e.currentTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
     } catch {}
   };
 
-  // Componente reutilizable para Inputs estilo App Moderna
-  const InputField = ({ label, icon: Icon, ...props }: any) => (
-    <div className="group">
-      <label className="block text-xs font-bold text-wood-medium mb-1.5 uppercase tracking-wide ml-1">
-        {label}
-      </label>
-      <div className="relative flex items-center">
-        {Icon && <Icon className="absolute left-4 text-wood-medium/50 group-focus-within:text-gold transition-colors w-5 h-5" />}
-        <input
-          onFocus={handleFieldFocus}
-          className={`w-full ${Icon ? 'pl-12' : 'pl-4'} pr-4 py-3.5 rounded-2xl bg-gray-100 border-2 border-transparent focus:bg-white focus:border-gold/50 focus:ring-0 transition-all text-wood-dark font-medium placeholder-wood-medium/40 text-base shadow-sm`}
-          {...props}
-        />
-      </div>
-    </div>
-  );
-
-  // Componente para Tarjetas de Selección (Delivery/Pickup/Pago)
-  const SelectionCard = ({ selected, onClick, icon: Icon, title, subtitle }: any) => (
-    <motion.button
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onClick}
-      className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all duration-200 border-2 relative overflow-hidden ${
-        selected
-          ? 'bg-white border-gold shadow-gold/20 shadow-lg'
-          : 'bg-white border-gray-100 hover:border-gold/30 text-wood-medium shadow-sm'
-      }`}
-    >
-      {selected && (
-        <div className="absolute top-0 right-0 bg-gold text-white p-1 rounded-bl-xl">
-          <Check size={12} />
-        </div>
-      )}
-      <div className={`p-3 rounded-xl ${selected ? 'bg-gold/10 text-gold' : 'bg-gray-100 text-wood-medium'}`}>
-        <Icon size={24} />
-      </div>
-      <div className="text-left flex-1">
-        <div className={`font-bold text-lg ${selected ? 'text-wood-dark' : 'text-wood-dark/80'}`}>{title}</div>
-        <div className="text-xs opacity-80">{subtitle}</div>
-      </div>
-    </motion.button>
-  );
+  const showSectionTitles = !isTyping; // oculta títulos mientras se escribe (también en desktop)
 
   return (
-    <div className="flex flex-col h-full bg-gray-50/50">
-      
-      {/* --- HEADER STICKY --- */}
-      {/* Visible siempre para mejor navegación */}
-      <div className={`bg-white/80 backdrop-blur-md border-b border-gray-100 flex-shrink-0 sticky top-0 z-20 transition-all ${isTyping ? 'py-2' : 'py-3'}`}>
-        <div className="max-w-md mx-auto px-4 w-full">
-          <div className="flex items-center justify-between mb-2">
+    <div className="flex flex-col h-full bg-gradient-to-br from-cream to-cream-light touch-manipulation">
+      {/* Header: totalmente oculto en móvil y también al escribir */}
+      {showSectionTitles && (
+        <div className="hidden md:block bg-white/90 backdrop-blur-sm border-b border-gold/20 p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
             <motion.button
-              whileTap={{ scale: 0.9 }}
+              whileHover={{ scale: 1.05, x: -2 }}
+              whileTap={{ scale: 0.95 }}
               onClick={onBack}
-              className="p-2 -ml-2 rounded-full hover:bg-gray-100 text-wood-dark transition-colors"
+              className="flex items-center gap-2 text-wood-dark hover:text-gold transition-colors"
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft className="w-5 h-5" />
+              <span className="font-medium">Volver</span>
             </motion.button>
-            
-            <h2 className="font-bold text-wood-dark text-lg">
-              {currentStep === 1 && "Tipo de Entrega"}
-              {currentStep === 2 && "Tus Datos"}
-              {currentStep === 3 && "Dirección"}
-              {currentStep === 4 && "Pago"}
-            </h2>
-            
-            <div className="w-8 text-right text-xs font-medium text-gold">
-              {currentStep}/{totalSteps}
+            <div className="text-center">
+              <p className="text-sm text-wood-medium">
+                Paso {currentStep} de {totalSteps}
+              </p>
             </div>
-          </div>
-          
-          {/* Barra de Progreso */}
-          <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
-            <motion.div 
-              className="h-full bg-gold"
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPercentage}%` }}
-              transition={{ duration: 0.3 }}
-            />
+            <div className="w-16" />
           </div>
         </div>
-      </div>
+      )}
 
-      {/* --- CONTENIDO SCROLLEABLE --- */}
-      <div className="flex-1 overflow-y-auto p-4 scroll-smooth">
-        <div className="max-w-md mx-auto w-full min-h-[300px]">
-          <AnimatePresence mode="wait">
-            
-            {/* STEP 1: Delivery Type */}
-            {currentStep === 1 && (
-              <motion.div
-                key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-4 py-4"
-              >
-                <div className="text-center mb-6">
-                  <h3 className="text-2xl font-bold text-wood-dark">¿Cómo quieres tu pedido?</h3>
-                  <p className="text-wood-medium text-sm mt-1">Elige la opción que prefieras</p>
+      {/* Contenido principal */}
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 pb-24 md:pb-6">
+        <AnimatePresence mode="wait">
+          {/* Step 1 */}
+          {currentStep === 1 && (
+            <motion.div
+              key="step1"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-md mx-auto space-y-3 md:space-y-6"
+            >
+              {/* Título oculto en móvil y al escribir */}
+              {showSectionTitles && (
+                <div className="hidden md:block text-center mb-4 md:mb-8">
+                  <h3 className="text-2xl font-bold text-wood-dark mb-2">¿Cómo prefieres tu pedido?</h3>
                 </div>
+              )}
 
-                <SelectionCard
-                  selected={customerInfo.deliveryType === 'delivery'}
+              <div className="space-y-2.5 md:space-y-4">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     setCustomerInfo(prev => ({ ...prev, deliveryType: 'delivery' }));
-                    setTimeout(nextStep, 250);
+                    setTimeout(nextStep, 200);
                   }}
-                  icon={Truck}
-                  title="Domicilio"
-                  subtitle="Llevamos la comida a tu puerta"
-                />
+                  className={`w-full p-3 md:p-6 rounded-2xl flex items-center gap-3 md:gap-4 transition-all duration-200 border-2 ${
+                    customerInfo.deliveryType === 'delivery'
+                      ? 'bg-gold text-white border-gold shadow-lg'
+                      : 'bg-white border-gold/30 text-wood-dark hover:border-gold/50'
+                  }`}
+                >
+                  <Truck className="w-6 h-6 md:w-8 md:h-8" />
+                  <div className="text-left">
+                    <div className="font-bold text-base md:text-lg">Domicilio</div>
+                    <div className="text-xs md:text-sm opacity-80">Entrega en tu dirección</div>
+                  </div>
+                </motion.button>
 
-                <SelectionCard
-                  selected={customerInfo.deliveryType === 'pickup'}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     setCustomerInfo(prev => ({ ...prev, deliveryType: 'pickup' }));
-                    setTimeout(nextStep, 250);
+                    setTimeout(nextStep, 200);
                   }}
-                  icon={Store}
-                  title="Recoger en Local"
-                  subtitle="Pasa por tu pedido (Sin costo)"
-                />
-              </motion.div>
-            )}
-
-            {/* STEP 2: User Info */}
-            {currentStep === 2 && (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6 py-4"
-              >
-                <div className="text-center mb-2">
-                  <div className="w-16 h-16 bg-gold/10 rounded-full flex items-center justify-center mx-auto mb-3 text-gold">
-                    <User size={32} />
+                  className={`w-full p-3 md:p-6 rounded-2xl flex items-center gap-3 md:gap-4 transition-all duration-200 border-2 ${
+                    customerInfo.deliveryType === 'pickup'
+                      ? 'bg-gold text-white border-gold shadow-lg'
+                      : 'bg-white border-gold/30 text-wood-dark hover:border-gold/50'
+                  }`}
+                >
+                  <Store className="w-6 h-6 md:w-8 md:h-8" />
+                  <div className="text-left">
+                    <div className="font-bold text-base md:text-lg">Recoger en local</div>
+                    <div className="text-xs md:text-sm opacity-80">Más rápido y sin costo adicional</div>
                   </div>
-                  <h3 className="text-xl font-bold text-wood-dark">Datos de Contacto</h3>
-                </div>
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
 
-                <div className="space-y-4 bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
-                  <InputField
-                    label="Nombre Completo"
-                    icon={User}
+          {/* Step 2 */}
+          {currentStep === 2 && (
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-md mx-auto space-y-3 md:space-y-6"
+            >
+              {showSectionTitles && (
+                <div className="hidden md:block text-center mb-4 md:mb-8">
+                  <User className="text-gold mx-auto mb-4 w-12 h-12" />
+                  <h3 className="text-2xl font-bold text-wood-dark mb-2">Tus datos</h3>
+                  <p className="text-wood-medium">Para contactarte sobre tu pedido</p>
+                </div>
+              )}
+
+              <div className="space-y-2.5 md:space-y-4">
+                <div>
+                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                    Nombre completo
+                  </label>
+                  <input
                     type="text"
+                    inputMode="text"
                     value={customerInfo.name}
-                    onChange={(e: any) => setCustomerInfo(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Ej: Juan Pérez"
+                    onChange={(e) => setCustomerInfo(prev => ({ ...prev, name: e.target.value }))}
+                    onFocus={handleFieldFocus}
+                    className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
+                    placeholder="Tu nombre completo"
                     autoFocus
                   />
+                </div>
 
-                  <InputField
-                    label="Teléfono / WhatsApp"
-                    icon={Store} // Icono de teléfono o store
+                <div>
+                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                    Teléfono
+                  </label>
+                  <input
                     type="tel"
+                    inputMode="tel"
                     pattern="[0-9]*"
                     value={customerInfo.phone}
-                    onChange={(e: any) => setCustomerInfo(prev => ({ ...prev, phone: e.target.value }))}
-                    placeholder="Ej: 300 123 4567"
+                    onChange={(e) => setCustomerInfo(prev => ({ ...prev, phone: e.target.value }))}
+                    onFocus={handleFieldFocus}
+                    className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
+                    placeholder="300 123 4567"
                   />
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-            {/* STEP 3: Address (Delivery Only) */}
-            {currentStep === 3 && customerInfo.deliveryType === 'delivery' && (
-              <motion.div
-                key="step3"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-5 py-4"
-              >
-                <div className="text-center mb-2">
-                  <div className="w-16 h-16 bg-gold/10 rounded-full flex items-center justify-center mx-auto mb-3 text-gold">
-                    <MapPin size={32} />
-                  </div>
-                  <h3 className="text-xl font-bold text-wood-dark">Ubicación de Entrega</h3>
+          {/* Step 3 */}
+          {currentStep === 3 && customerInfo.deliveryType === 'delivery' && (
+            <motion.div
+              key="step3"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-md mx-auto space-y-3 md:space-y-6"
+            >
+              {showSectionTitles && (
+                <div className="hidden md:block text-center mb-4 md:mb-8">
+                  <MapPin className="text-gold mx-auto mb-4 w-12 h-12" />
+                  <h3 className="text-2xl font-bold text-wood-dark mb-2">¿A dónde enviamos?</h3>
                 </div>
+              )}
 
-                {/* Barrio Search */}
-                <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-wood-medium mb-1.5 uppercase tracking-wide ml-1">
-                      Barrio
-                    </label>
-                    <div className="relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-wood-medium/50 w-5 h-5" />
-                      <input
-                        type="text"
-                        placeholder="Buscar barrio..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        onFocus={handleFieldFocus}
-                        className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-gray-100 border-2 border-transparent focus:bg-white focus:border-gold/50 focus:ring-0 transition-all text-wood-dark outline-none"
-                      />
+              <div className="space-y-2.5 md:space-y-4">
+                {/* Barrio */}
+                <div>
+                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                    Barrio de entrega
+                  </label>
+
+                  <div className="relative mb-2 md:mb-3">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-wood-medium w-5 h-5" />
+                    <input
+                      type="text"
+                      inputMode="search"
+                      placeholder="Buscar barrio..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onFocus={handleFieldFocus}
+                      className="w-full pl-10 pr-4 py-2.5 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] scroll-mb-40"
+                    />
+                  </div>
+
+                  {loadingAreas && (
+                    <div className="text-center py-3">
+                      <p className="text-wood-medium text-sm">Cargando barrios...</p>
                     </div>
-                    
-                    {/* Lista de Barrios */}
-                    <div className="mt-2 max-h-48 overflow-y-auto custom-scrollbar rounded-xl border border-gray-100 bg-gray-50/50">
-                      {loadingAreas ? (
-                        <div className="p-4 text-center text-sm text-wood-medium">Cargando...</div>
-                      ) : filteredNeighborhoods.length > 0 ? (
-                        filteredNeighborhoods.map(neighborhood => (
-                          <button
-                            key={neighborhood.barrio}
-                            onClick={() => handleNeighborhoodSelect(neighborhood.barrio)}
-                            className={`w-full p-3 text-left text-sm border-b border-gray-100 last:border-0 flex justify-between items-center hover:bg-white transition-colors ${
-                              selectedNeighborhood === neighborhood.barrio ? 'bg-gold/10 text-gold font-semibold' : 'text-wood-dark'
-                            }`}
-                          >
-                            <span>{neighborhood.barrio}</span>
-                            <span className="text-xs font-bold bg-white px-2 py-1 rounded border border-gray-100">
+                  )}
+
+                  {!loadingAreas && (
+                    <div className="max-h-40 md:max-h-64 overflow-y-auto space-y-2">
+                      {filteredNeighborhoods.map(neighborhood => (
+                        <motion.button
+                          key={neighborhood.barrio}
+                          whileHover={{ scale: 1.01 }}
+                          whileTap={{ scale: 0.99 }}
+                          onClick={() => handleNeighborhoodSelect(neighborhood.barrio)}
+                          className={`w-full p-3 rounded-xl text-left transition-all border-2 ${
+                            selectedNeighborhood === neighborhood.barrio
+                              ? 'bg-gold text-white border-gold'
+                              : 'bg-white hover:bg-gold/10 text-wood-dark border-transparent hover:border-gold/30'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium text-sm md:text-base">{neighborhood.barrio}</span>
+                            <span className={`font-bold ${selectedNeighborhood === neighborhood.barrio ? 'text-white' : 'text-gold'}`}>
                               {formatPrice(neighborhood.precio)}
                             </span>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="p-4 text-center text-sm text-wood-medium">No hay resultados</div>
-                      )}
+                          </div>
+                        </motion.button>
+                      ))}
                     </div>
-                  </div>
-
-                  {/* Dirección Exacta */}
-                  <AnimatePresence>
-                    {selectedNeighborhood && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                      >
-                        <InputField
-                          label="Dirección Exacta"
-                          icon={MapPin}
-                          type="text"
-                          value={customerInfo.address}
-                          onChange={(e: any) => setCustomerInfo(prev => ({ ...prev, address: e.target.value }))}
-                          placeholder="Calle 123 #45-67, Casa 2"
-                          autoFocus
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </motion.div>
-            )}
-
-            {/* STEP 4: Payment */}
-            {currentStep === 4 && (
-              <motion.div
-                key="step4"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6 py-4"
-              >
-                <div className="text-center mb-4">
-                  <div className="w-16 h-16 bg-gold/10 rounded-full flex items-center justify-center mx-auto mb-3 text-gold">
-                    <CreditCard size={32} />
-                  </div>
-                  <h3 className="text-xl font-bold text-wood-dark">Método de Pago</h3>
-                </div>
-
-                <div className="space-y-3">
-                  <SelectionCard
-                    selected={customerInfo.paymentMethod === 'efectivo'}
-                    onClick={() => setCustomerInfo(prev => ({ ...prev, paymentMethod: 'efectivo' }))}
-                    icon={DollarSign}
-                    title="Efectivo"
-                    subtitle="Pagas al recibir el pedido"
-                  />
-
-                  <SelectionCard
-                    selected={customerInfo.paymentMethod === 'transferencia'}
-                    onClick={() => setCustomerInfo(prev => ({ ...prev, paymentMethod: 'transferencia' }))}
-                    icon={CreditCard}
-                    title="Transferencia"
-                    subtitle="Nequi / Bancolombia"
-                  />
-                </div>
-
-                <AnimatePresence>
-                  {customerInfo.paymentMethod === 'transferencia' && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex flex-col items-center text-center shadow-sm"
-                    >
-                      <div className="bg-white p-2 rounded-full mb-2 shadow-sm">
-                        <CreditCard size={20} className="text-blue-600" />
-                      </div>
-                      <p className="font-bold text-blue-800 text-lg mb-1 tracking-wide">
-                        {restaurantConfig.nequi}
-                      </p>
-                      <p className="text-blue-600 text-xs">
-                        Recuerda enviar el comprobante por WhatsApp al confirmar.
-                      </p>
-                    </motion.div>
                   )}
-                </AnimatePresence>
-              </motion.div>
-            )}
+                </div>
 
-          </AnimatePresence>
-        </div>
-        {/* Espacio extra al final para que el footer no tape contenido */}
-        <div className="h-24" />
-      </div>
-
-      {/* --- FOOTER STICKY --- */}
-      <div className={`bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] flex-shrink-0 sticky bottom-0 z-30 w-full transition-all ${isTyping ? 'p-2 pb-safe' : 'p-4 pb-safe'}`}>
-        <div className="max-w-md mx-auto w-full">
-          
-          {/* Total Row (Oculto al escribir para ganar espacio) */}
-          {!isTyping && (
-            <div className="flex justify-between items-end mb-3 px-1">
-              <div className="flex flex-col">
-                <span className="text-xs text-wood-medium font-medium">Total a pagar</span>
-                {customerInfo.deliveryType === 'delivery' && deliveryPrice > 0 && (
-                  <span className="text-[10px] text-gold bg-gold/10 px-1.5 py-0.5 rounded mt-0.5 inline-block self-start">
-                    + {formatPrice(deliveryPrice)} domi
-                  </span>
+                {/* Dirección */}
+                {selectedNeighborhood && (
+                  <div>
+                    <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                      Dirección completa
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="text"
+                      value={customerInfo.address}
+                      onChange={(e) => setCustomerInfo(prev => ({ ...prev, address: e.target.value }))}
+                      onFocus={handleFieldFocus}
+                      className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
+                      placeholder="Calle 123 #45-67, Apto 101"
+                      autoFocus
+                    />
+                  </div>
                 )}
               </div>
-              <span className="text-2xl font-bold text-wood-dark">
+            </motion.div>
+          )}
+
+          {/* Step 4 */}
+          {currentStep === 4 && (
+            <motion.div
+              key="step4"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-md mx-auto space-y-3 md:space-y-6"
+            >
+              {showSectionTitles && (
+                <div className="hidden md:block text-center mb-4 md:mb-8">
+                  <CreditCard className="text-gold mx-auto mb-4 w-12 h-12" />
+                  <h3 className="text-2xl font-bold text-wood-dark mb-2">¿Cómo pagas?</h3>
+                </div>
+              )}
+
+              <div className="space-y-2.5 md:space-y-4">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCustomerInfo(prev => ({ ...prev, paymentMethod: 'efectivo' }))}
+                  className={`w-full p-3 md:p-6 rounded-2xl flex items-center gap-3 md:gap-4 transition-all border-2 ${
+                    customerInfo.paymentMethod === 'efectivo'
+                      ? 'bg-gold text-white border-gold shadow-lg'
+                      : 'bg-white border-gold/30 text-wood-dark hover:border-gold/50'
+                  }`}
+                >
+                  <DollarSign className="w-6 h-6 md:w-8 md:h-8" />
+                  <div className="text-left">
+                    <div className="font-bold text-base md:text-lg">Efectivo</div>
+                    <div className="text-xs md:text-sm opacity-80">Pago al recibir</div>
+                  </div>
+                </motion.button>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCustomerInfo(prev => ({ ...prev, paymentMethod: 'transferencia' }))}
+                  className={`w-full p-3 md:p-6 rounded-2xl flex items-center gap-3 md:gap-4 transition-all border-2 ${
+                    customerInfo.paymentMethod === 'transferencia'
+                      ? 'bg-gold text-white border-gold shadow-lg'
+                      : 'bg-white border-gold/30 text-wood-dark hover:border-gold/50'
+                  }`}
+                >
+                  <CreditCard className="w-6 h-6 md:w-8 md:h-8" />
+                  <div className="text-left">
+                    <div className="font-bold text-base md:text-lg">Transferencia</div>
+                    <div className="text-xs md:text-sm opacity-80">Pago anticipado</div>
+                  </div>
+                </motion.button>
+              </div>
+
+              {customerInfo.paymentMethod === 'transferencia' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-blue-50 border border-blue-200 rounded-xl p-3 md:p-4"
+                >
+                  <p className="text-blue-700 font-medium text-center mb-1 md:mb-2">
+                    📱 Número: {restaurantConfig.nequi}
+                  </p>
+                  <p className="text-blue-600 text-xs md:text-sm text-center">
+                    Envía el comprobante por WhatsApp
+                  </p>
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Footer compacto y “keyboard-aware” */}
+      <div
+        className={`border-t border-gold/20 bg-white/90 backdrop-blur-sm ${isTyping ? 'p-2' : 'p-3 md:p-4'} flex-shrink-0 sticky bottom-0`}
+        style={{ paddingBottom: `calc(env(safe-area-inset-bottom) + ${isTyping ? '6px' : '12px'})` }}
+      >
+        {/* Total: oculto mientras se escribe para ganar espacio */}
+        {!isTyping && (
+          <div className="bg-gold/10 rounded-xl p-3 mb-3 md:mb-4">
+            <div className="flex justify-between items-center">
+              <span className="font-bold text-wood-dark text-sm md:text-base">Total:</span>
+              <span className="text-lg md:text-xl font-bold text-gold">
                 {formatPrice(cartTotal + (customerInfo.deliveryType === 'delivery' ? deliveryPrice : 0))}
               </span>
             </div>
-          )}
-
-          <div className="flex gap-3">
-            {currentStep > 1 && (
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={prevStep}
-                className="px-5 py-3 rounded-xl font-bold text-wood-dark bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                <ArrowLeft size={20} />
-              </motion.button>
-            )}
-
-            {currentStep < totalSteps ? (
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={nextStep}
-                disabled={!canProceedToNext()}
-                className={`flex-1 py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2 transition-all ${
-                  canProceedToNext()
-                    ? 'bg-gradient-to-r from-gold to-gold/90 shadow-gold/30'
-                    : 'bg-gray-300 cursor-not-allowed shadow-none'
-                }`}
-              >
-                Continuar
-                <ChevronRight size={20} />
-              </motion.button>
-            ) : (
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => onSubmit(deliveryPrice)}
-                disabled={!isFormValid()}
-                className={`flex-1 py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2 transition-all ${
-                  isFormValid()
-                    ? 'bg-gradient-to-r from-green-500 to-green-600 shadow-green-500/30'
-                    : 'bg-gray-300 cursor-not-allowed shadow-none'
-                }`}
-              >
-                <Send size={18} />
-                Confirmar Pedido
-              </motion.button>
+            {customerInfo.deliveryType === 'delivery' && deliveryPrice > 0 && (
+              <div className="text-xs md:text-sm text-wood-medium mt-1">
+                Incluye domicilio: {formatPrice(deliveryPrice)}
+              </div>
             )}
           </div>
+        )}
+
+        {/* Botones */}
+        <div className="flex gap-2 md:gap-3">
+          {currentStep > 1 && (
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={prevStep}
+              className={`px-4 ${isTyping ? 'py-1.5' : 'py-2'} md:px-6 md:py-3 bg-wood-light/20 hover:bg-wood-light/30 text-wood-dark rounded-xl font-medium transition-all text-sm md:text-base`}
+            >
+              Anterior
+            </motion.button>
+          )}
+
+          {currentStep < totalSteps ? (
+            <motion.button
+              whileHover={canProceedToNext() ? { scale: 1.02 } : {}}
+              whileTap={canProceedToNext() ? { scale: 0.98 } : {}}
+              onClick={nextStep}
+              disabled={!canProceedToNext()}
+              className={`flex-1 ${isTyping ? 'py-2' : 'py-2'} md:py-3 rounded-xl font-bold transition-all text-sm md:text-base ${
+                canProceedToNext()
+                  ? 'bg-gold hover:bg-gold/90 text-white shadow-lg'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              Continuar
+            </motion.button>
+          ) : (
+            <motion.button
+              whileHover={isFormValid() ? { scale: 1.02 } : {}}
+              whileTap={isFormValid() ? { scale: 0.98 } : {}}
+              onClick={() => onSubmit(deliveryPrice)}
+              disabled={!isFormValid()}
+              className={`flex-1 flex items-center justify-center gap-2 md:gap-3 ${isTyping ? 'py-2' : 'py-2'} md:py-3 rounded-xl font-bold transition-all text-sm md:text-base ${
+                isFormValid()
+                  ? 'bg-gold hover:bg-gold/90 text-white shadow-lg'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              <Send className="w-5 h-5" />
+              Confirmar Pedido
+            </motion.button>
+          )}
         </div>
       </div>
     </div>
