@@ -24,6 +24,7 @@ import ClientesTab from './AdminClientes';
 import VariablesTab from './AdminVariables';
 import ResultadosTab from './AdminResultados';
 import DictadoTab from './DictadoPage';
+import Manual from './Manual';
 
 // --- TIPOS Y CONFIGURACIÓN ---
 
@@ -288,7 +289,8 @@ const Admin: React.FC = () => {
       {/* --- CONTENIDO PRINCIPAL --- */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6 animate-in fade-in duration-500">
         {activeTab === 'orders' && allAvailable.some(t => t.id === 'orders') && <OrdersTab />}
-        {activeTab === 'dictado' && allAvailable.some(t => t.id === 'dictado') && <DictadoTab meseroName={user.name} />}
+        {/* {activeTab === 'dictado' && allAvailable.some(t => t.id === 'dictado') && <DictadoTab meseroName={user.name} />} */}
+        {activeTab === 'dictado' && allAvailable.some(t => t.id === 'dictado') && <Manual />}
         {activeTab === 'menu' && allAvailable.some(t => t.id === 'menu') && <MenuTab />}
         {activeTab === 'domicilios' && allAvailable.some(t => t.id === 'domicilios') && <DomiciliosTab />}
         {activeTab === 'clientes' && allAvailable.some(t => t.id === 'clientes') && <ClientesTab />}

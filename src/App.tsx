@@ -15,7 +15,18 @@ function App() {
       <Routes>
         <Route path="/kitchen" element={<Kitchen />} />
         <Route path="/despacho" element={<Despacho />} />
-        <Route path="/admin" element={<Admin />} />
+        
+        {/* --- CORRECCIÓN AQUÍ --- */}
+        {/* Envolvemos Admin en los providers para que la pestaña 'Mesa' (Manual) funcione */}
+        <Route path="/admin" element={
+          <MenuProvider>
+            <CartProvider>
+              <Admin />
+            </CartProvider>
+          </MenuProvider>
+        } />
+        {/* ----------------------- */}
+
         <Route path="/" element={
           <MenuProvider>
             <CartProvider>
