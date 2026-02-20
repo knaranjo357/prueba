@@ -1,4 +1,3 @@
-// src/pages/Manual.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
@@ -97,8 +96,7 @@ const norm = (s: string) => (s || "").trim().toLowerCase();
 
 const computeUnitPrice = (item: MenuItemFull, isTakeaway: boolean) => {
   const base = Number(item.valor) || 0;
-  const extra =
-    isTakeaway && item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
+  const extra = isTakeaway && item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
   return base + extra;
 };
 
@@ -437,8 +435,7 @@ const printTicket = async (order: ManualOrder) => {
     return;
   }
 
-  const esc = (s: string) =>
-    (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = (s: string) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   const itemsHtml = items
     .map(
@@ -612,6 +609,47 @@ const Manual: React.FC = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpenMobile, setCartOpenMobile] = useState(false);
   const [detalleOpen, setDetalleOpen] = useState(false);
+
+  // comentario modal (nuevo)
+  const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const [noteModalItemId, setNoteModalItemId] = useState<string | null>(null);
+
+  const openNoteModal = useCallback((id: string) => {
+    setNoteModalItemId(id);
+    setNoteModalOpen(true);
+  }, []);
+
+  const closeNoteModal = useCallback(() => {
+    setNoteModalOpen(false);
+    setNoteModalItemId(null);
+  }, []);
+
+  // sticky categories under header (nuevo)
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const [headerH, setHeaderH] = useState(0);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+
+    const update = () => setHeaderH(el.getBoundingClientRect().height || 0);
+    update();
+
+    const RO = (window as any).ResizeObserver as any;
+    let ro: any = null;
+    if (RO) {
+      ro = new RO(() => update());
+      ro.observe(el);
+    }
+
+    window.addEventListener("resize", update);
+    return () => {
+      try {
+        if (ro) ro.disconnect();
+      } catch {}
+      window.removeEventListener("resize", update);
+    };
+  }, []);
 
   // datos pedido
   const [nombre, setNombre] = useState("");
@@ -796,6 +834,15 @@ const Manual: React.FC = () => {
     return m;
   }, [cart]);
 
+  // notas por id (nuevo)
+  const noteById = useMemo(() => {
+    const m: Record<string, string> = {};
+    cart.forEach((c) => (m[c.id] = c.notes || ""));
+    return m;
+  }, [cart]);
+
+  const currentNote = noteModalItemId ? noteById[noteModalItemId] || "" : "";
+
   const cartCount = useMemo(() => cart.reduce((acc, it) => acc + (it.quantity || 0), 0), [cart]);
 
   /** cart ops (callbacks estables) */
@@ -818,8 +865,7 @@ const Manual: React.FC = () => {
 
   const inc = useCallback((id: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x))), []);
   const dec = useCallback(
-    (id: string) =>
-      setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity - 1 } : x)).filter((x) => x.quantity > 0)),
+    (id: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity - 1 } : x)).filter((x) => x.quantity > 0)),
     []
   );
 
@@ -933,6 +979,7 @@ const Manual: React.FC = () => {
         setValorDomicilio(0);
         setMetodoPago("efectivo");
         setCartOpenMobile(false);
+        closeNoteModal();
 
         if (opts.print) {
           await printTicket({
@@ -964,34 +1011,41 @@ const Manual: React.FC = () => {
       metodoPago,
       clearAll,
       showToast,
+      closeNoteModal,
     ]
   );
 
   /** Atajos teclado (velocidad POS)
    *  Enter: Guardar (si no estás escribiendo en input)
    *  Shift+Enter: Imprimir
-   *  Esc: cerrar caja móvil / cerrar sugerencias barrio
+   *  Esc: cerrar caja móvil / cerrar sugerencias barrio / cerrar modal comentario
    *  Ctrl/Cmd+S: Guardar
    *  Ctrl/Cmd+P: Imprimir (evita print del browser)
    */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isTypingElement(e.target)) return;
-
-      const isMod = e.ctrlKey || e.metaKey;
-
+      // Escape SIEMPRE funciona (aunque estés escribiendo)
       if (e.key === "Escape") {
+        if (noteModalOpen) {
+          e.preventDefault();
+          closeNoteModal();
+          return;
+        }
         if (barrioOpen) setBarrioOpen(false);
         if (cartOpenMobile) setCartOpenMobile(false);
         return;
       }
 
-      if (isMod && (e.key.toLowerCase() === "s")) {
+      if (isTypingElement(e.target)) return;
+
+      const isMod = e.ctrlKey || e.metaKey;
+
+      if (isMod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         saveOrder({ print: false });
         return;
       }
-      if (isMod && (e.key.toLowerCase() === "p")) {
+      if (isMod && e.key.toLowerCase() === "p") {
         e.preventDefault();
         saveOrder({ print: true });
         return;
@@ -1007,7 +1061,7 @@ const Manual: React.FC = () => {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saveOrder, barrioOpen, cartOpenMobile]);
+  }, [saveOrder, barrioOpen, cartOpenMobile, noteModalOpen, closeNoteModal]);
 
   /** ===== UI bits ===== */
   const ModePill = () => (
@@ -1082,8 +1136,8 @@ const Manual: React.FC = () => {
         </div>
       )}
 
-      {/* HEADER (sticky) */}
-      <div className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+      {/* HEADER MAIN (sticky) */}
+      <div ref={headerRef} className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-3 [@media(max-height:820px)]:py-2">
           <div className="flex flex-col lg:flex-row gap-3 [@media(max-height:820px)]:gap-2 justify-between lg:items-center">
             {/* left: title + search */}
@@ -1136,9 +1190,13 @@ const Manual: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* categorías (chips) */}
-          <div className="mt-3 [@media(max-height:820px)]:mt-2 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      {/* CATEGORÍAS (sticky, siempre visible) */}
+      <div className="sticky z-40 bg-white/95 backdrop-blur border-b border-slate-200" style={{ top: headerH }}>
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
             <div className="flex items-center gap-2 text-slate-600 shrink-0">
               <Filter size={14} />
               <span className="text-[11px] font-extrabold">Categorías</span>
@@ -1226,6 +1284,20 @@ const Manual: React.FC = () => {
                                     onMinus={() => dec(id)}
                                   />
                                 </div>
+
+                                {/* Botón comentario (nuevo) */}
+                                {qty > 0 && (
+                                  <button
+                                    onClick={(e) => {
+                                      stop(e);
+                                      openNoteModal(id);
+                                    }}
+                                    className="mt-2 w-full px-3 py-2 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs hover:bg-slate-100"
+                                    title="Agregar comentario"
+                                  >
+                                    Comentario{noteById[id] ? " ✓" : ""}
+                                  </button>
+                                )}
                               </button>
                             );
                           })}
@@ -1301,6 +1373,20 @@ const Manual: React.FC = () => {
                                       />
                                     </div>
                                   </div>
+
+                                  {/* Botón comentario (nuevo) */}
+                                  {qty > 0 && (
+                                    <button
+                                      onClick={(e) => {
+                                        stop(e);
+                                        openNoteModal(id);
+                                      }}
+                                      className="mt-2 w-full px-3 py-2 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs hover:bg-slate-100"
+                                      title="Agregar comentario"
+                                    >
+                                      Comentario{noteById[id] ? " ✓" : ""}
+                                    </button>
+                                  )}
                                 </button>
                               );
                             })}
@@ -1339,15 +1425,23 @@ const Manual: React.FC = () => {
                         </div>
 
                         <div className="shrink-0">
-                          <QtyPill
-                            qty={qty}
-                            disabled={disabled}
-                            compact
-                            onPlus={() => addToCart(item)}
-                            onMinus={() => dec(id)}
-                          />
+                          <QtyPill qty={qty} disabled={disabled} compact onPlus={() => addToCart(item)} onMinus={() => dec(id)} />
                         </div>
                       </div>
+
+                      {/* Botón comentario (nuevo) */}
+                      {qty > 0 && (
+                        <button
+                          onClick={(e) => {
+                            stop(e);
+                            openNoteModal(id);
+                          }}
+                          className="mt-3 w-full px-3 py-2 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs hover:bg-slate-100"
+                          title="Agregar comentario"
+                        >
+                          Comentario{noteById[id] ? " ✓" : ""}
+                        </button>
+                      )}
 
                       <div className="mt-3 [@media(max-height:820px)]:mt-2 flex items-end justify-between border-t border-slate-100 pt-3 [@media(max-height:820px)]:pt-2">
                         <div>
@@ -1662,11 +1756,7 @@ const Manual: React.FC = () => {
                       className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
                     >
                       <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
-                      {detalleOpen ? (
-                        <ChevronUp size={16} className="text-slate-500" />
-                      ) : (
-                        <ChevronDown size={16} className="text-slate-500" />
-                      )}
+                      {detalleOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
                     </button>
                     {detalleOpen && (
                       <div className="p-3">
@@ -1837,11 +1927,7 @@ const Manual: React.FC = () => {
                         className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
                       >
                         <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
-                        {detalleOpen ? (
-                          <ChevronUp size={16} className="text-slate-500" />
-                        ) : (
-                          <ChevronDown size={16} className="text-slate-500" />
-                        )}
+                        {detalleOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
                       </button>
                       {detalleOpen && (
                         <div className="p-3">
@@ -1868,6 +1954,52 @@ const Manual: React.FC = () => {
         )}
       </div>
 
+      {/* ===== MODAL COMENTARIO (nuevo) ===== */}
+      {noteModalOpen && noteModalItemId && (
+        <div className="fixed inset-0 z-[95]">
+          <button className="absolute inset-0 bg-black/40" onClick={closeNoteModal} aria-label="Cerrar comentario" />
+          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="font-black text-slate-900">Comentario</div>
+              <button
+                onClick={closeNoteModal}
+                className="p-2 rounded-2xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                title="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <div className="text-[11px] text-slate-500 font-semibold mb-2">Nota para el producto (ej: sin ensalada, con ají)</div>
+
+              <div className="relative">
+                <MessageSquare size={14} className="absolute left-3 top-3 text-slate-400" />
+                <input
+                  autoFocus
+                  value={currentNote}
+                  onChange={(e) => setNote(noteModalItemId, e.target.value)}
+                  placeholder="Escribe el comentario..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-2.5 pl-10 pr-3 text-sm focus:ring-2 focus:ring-amber-500/40 outline-none text-slate-800 placeholder-slate-400"
+                />
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setNote(noteModalItemId, "")}
+                  className="py-2.5 rounded-2xl bg-slate-100 text-slate-700 font-extrabold hover:bg-slate-200"
+                >
+                  Limpiar
+                </button>
+                <button onClick={closeNoteModal} className="py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950">
+                  Listo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* spacing para que el bottom bar no tape contenido */}
       <div className="lg:hidden h-[84px]" />
     </div>
@@ -1875,3 +2007,4 @@ const Manual: React.FC = () => {
 };
 
 export default Manual;
+

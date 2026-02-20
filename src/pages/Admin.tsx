@@ -69,7 +69,7 @@ const TABS_CONFIG: TabDef[] = [
   },
   { 
     id: 'dictado', 
-    label: 'Mesa', 
+    label: 'Manual', 
     icon: <AudioLines size={24} />, 
     roles: ['SUPER_ADMIN', 'MESA_MENU','WPP_CFG'] 
   },
@@ -86,24 +86,24 @@ const TABS_CONFIG: TabDef[] = [
     icon: <MapPin size={24} />, 
     roles: ['SUPER_ADMIN','WPP_CFG'] 
   },
-  { 
-    id: 'clientes', 
-    label: 'Clientes', 
-    icon: <Users size={24} />, 
-    roles: ['SUPER_ADMIN'] 
-  },
+  // { 
+  //   id: 'clientes', 
+  //   label: 'Clientes', 
+  //   icon: <Users size={24} />, 
+  //   roles: ['SUPER_ADMIN'] 
+  // },
   { 
     id: 'variables', 
     label: 'Config', 
     icon: <Settings size={24} />, 
     roles: ['SUPER_ADMIN', 'WPP_CFG'] 
   },
-  { 
-    id: 'resultados', 
-    label: 'Reportes', 
-    icon: <BarChart3 size={24} />, 
-    roles: ['SUPER_ADMIN'] 
-  },
+  // { 
+  //   id: 'resultados', 
+  //   label: 'Reportes', 
+  //   icon: <BarChart3 size={24} />, 
+  //   roles: ['SUPER_ADMIN'] 
+  // },
 ];
 
 // IDs que queremos mostrar siempre en la barra inferior (Prioridad)
