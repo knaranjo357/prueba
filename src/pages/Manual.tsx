@@ -1,5 +1,5 @@
 // src/pages/Manual.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   RefreshCw,
@@ -22,13 +22,17 @@ import {
   X,
   ShoppingBag,
   Sparkles,
+  Store,
+  Banknote,
+  ArrowLeftRight,
 } from "lucide-react";
 
-import { formatPrice } from "../utils/dateUtils"; // ajusta si tu ruta es distinta
+import { formatPrice } from "../utils/dateUtils";
 
 /** ENDPOINTS */
 const MENU_FULL_API = "https://n8n.alliasoft.com/webhook/luis-res/menu-completo";
 const MAKE_ORDER_API = "https://n8n.alliasoft.com/webhook/luis-res/hacer-pedido";
+const DOMICILIOS_API = "https://n8n.alliasoft.com/webhook/luis-res/domicilios";
 
 /** TIPOS */
 type MenuItemFull = {
@@ -68,6 +72,12 @@ type ManualOrder = {
   estado: string;
 };
 
+type DomicilioRow = {
+  row_number?: number;
+  barrio: string;
+  precio: number;
+};
+
 /** ===== helpers ===== */
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const makeNumeroFallback = () => {
@@ -83,6 +93,7 @@ const normalizeNote = (s: string) => {
   if (!raw) return "";
   return raw.replace(/^\(+/, "").replace(/\)+$/, "").trim();
 };
+const norm = (s: string) => (s || "").trim().toLowerCase();
 
 const computeUnitPrice = (item: MenuItemFull, isTakeaway: boolean) => {
   const base = Number(item.valor) || 0;
@@ -264,10 +275,34 @@ const bytesToBase64 = (bytes: number[]): string => {
   return btoa(binary);
 };
 const cp1252Map: Record<string, number> = {
-  Á: 0xc1, É: 0xc9, Í: 0xcd, Ó: 0xd3, Ú: 0xda, Ü: 0xdc, Ñ: 0xd1,
-  á: 0xe1, é: 0xe9, í: 0xed, ó: 0xf3, ú: 0xfa, ü: 0xfc, ñ: 0xf1,
-  "€": 0x80, "£": 0xa3, "¥": 0xa5, "¢": 0xa2, "°": 0xb0, "¿": 0xbf, "¡": 0xa1,
-  "“": 0x93, "”": 0x94, "‘": 0x91, "’": 0x92, "—": 0x97, "–": 0x96, "…": 0x85,
+  Á: 0xc1,
+  É: 0xc9,
+  Í: 0xcd,
+  Ó: 0xd3,
+  Ú: 0xda,
+  Ü: 0xdc,
+  Ñ: 0xd1,
+  á: 0xe1,
+  é: 0xe9,
+  í: 0xed,
+  ó: 0xf3,
+  ú: 0xfa,
+  ü: 0xfc,
+  ñ: 0xf1,
+  "€": 0x80,
+  "£": 0xa3,
+  "¥": 0xa5,
+  "¢": 0xa2,
+  "°": 0xb0,
+  "¿": 0xbf,
+  "¡": 0xa1,
+  "“": 0x93,
+  "”": 0x94,
+  "‘": 0x91,
+  "’": 0x92,
+  "—": 0x97,
+  "–": 0x96,
+  "…": 0x85,
 };
 const asciiFallback: Record<string, string> = {
   "“": '"',
@@ -283,11 +318,23 @@ const encodeCP1252 = (str: string): number[] => {
   const bytes: number[] = [];
   for (const ch of str) {
     const code = ch.codePointAt(0)!;
-    if (code <= 0x7f) { bytes.push(code); continue; }
-    if (cp1252Map[ch] !== undefined) { bytes.push(cp1252Map[ch]); continue; }
+    if (code <= 0x7f) {
+      bytes.push(code);
+      continue;
+    }
+    if (cp1252Map[ch] !== undefined) {
+      bytes.push(cp1252Map[ch]);
+      continue;
+    }
     const basic = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (basic.length === 1 && basic.charCodeAt(0) <= 0x7f) { bytes.push(basic.charCodeAt(0)); continue; }
-    if (asciiFallback[ch]) { for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0)); continue; }
+    if (basic.length === 1 && basic.charCodeAt(0) <= 0x7f) {
+      bytes.push(basic.charCodeAt(0));
+      continue;
+    }
+    if (asciiFallback[ch]) {
+      for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0));
+      continue;
+    }
     bytes.push(0x3f);
   }
   return bytes;
@@ -310,7 +357,10 @@ const sendToRawBT = async (ticketLines: string[]) => {
   const escposBytes = buildEscposFromLines(ticketLines);
   const base64 = bytesToBase64(escposBytes);
   const url = `rawbt:base64,${base64}`;
-  try { (window as any).location.href = url; return; } catch {}
+  try {
+    (window as any).location.href = url;
+    return;
+  } catch {}
   try {
     const a = document.createElement("a");
     a.href = url;
@@ -435,7 +485,6 @@ const printTicket = async (order: ManualOrder) => {
 
 /** ===== micro toast ===== */
 type Toast = { type: "success" | "error" | "info"; msg: string } | null;
-
 const toastStyle = (t: Toast) => {
   if (!t) return "";
   if (t.type === "success") return "bg-emerald-600";
@@ -443,13 +492,92 @@ const toastStyle = (t: Toast) => {
   return "bg-slate-900";
 };
 
+/** ===== UI bits ===== */
+const stop = (e: React.MouseEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+};
+
+const QtyPill: React.FC<{
+  qty: number;
+  disabled?: boolean;
+  onPlus: () => void;
+  onMinus: () => void;
+  compact?: boolean;
+}> = ({ qty, disabled, onPlus, onMinus, compact }) => {
+  const btn = compact ? "h-8 w-8" : "h-9 w-9";
+  const txt = compact ? "text-xs" : "text-sm";
+  const mid = compact ? "px-2" : "px-3";
+
+  if (disabled) {
+    return (
+      <div className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-400 text-[11px] font-extrabold border border-slate-200">
+        Agotado
+      </div>
+    );
+  }
+
+  if (qty <= 0) {
+    return (
+      <button
+        onClick={(e) => {
+          stop(e);
+          onPlus();
+        }}
+        className={`inline-flex items-center gap-2 ${compact ? "px-3 py-1.5" : "px-4 py-2"} rounded-full bg-amber-600 text-white font-extrabold hover:bg-amber-700 active:scale-[0.98]`}
+        title="Agregar"
+      >
+        <Plus size={compact ? 14 : 16} />
+        <span className={compact ? "text-xs" : "text-sm"}>Agregar</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="inline-flex items-center rounded-full overflow-hidden bg-slate-900 text-white">
+      <button
+        className={`${btn} flex items-center justify-center hover:bg-white/10 active:bg-white/15`}
+        onClick={(e) => {
+          stop(e);
+          onMinus();
+        }}
+        title="Quitar"
+      >
+        <Minus size={compact ? 14 : 16} />
+      </button>
+      <div className={`${mid} ${txt} font-black tabular-nums`}>{qty}</div>
+      <button
+        className={`${btn} flex items-center justify-center hover:bg-white/10 active:bg-white/15`}
+        onClick={(e) => {
+          stop(e);
+          onPlus();
+        }}
+        title="Agregar"
+      >
+        <Plus size={compact ? 14 : 16} />
+      </button>
+    </div>
+  );
+};
+
 /** ===== COMPONENTE ===== */
+type Mode = "mesa" | "llevar" | "recoger";
+
 const Manual: React.FC = () => {
-  const [isTakeaway, setIsTakeaway] = useState(false);
+  // modo (mesa / llevar / recoger)
+  const [mode, setMode] = useState<Mode>("mesa");
+  const isTakeaway = mode !== "mesa"; // suma adicional llevar (icopor)
+  const hasDelivery = mode === "llevar";
 
   // menu
   const [menuItems, setMenuItems] = useState<MenuItemFull[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(false);
+
+  // domicilios
+  const [domicilios, setDomicilios] = useState<DomicilioRow[]>([]);
+  const [loadingDomicilios, setLoadingDomicilios] = useState(false);
+  const [barrioOpen, setBarrioOpen] = useState(false);
+  const barrioCloseTimer = useRef<number | null>(null);
 
   // filtros
   const [searchTerm, setSearchTerm] = useState("");
@@ -461,13 +589,18 @@ const Manual: React.FC = () => {
   const [cartOpenMobile, setCartOpenMobile] = useState(false);
   const [detalleOpen, setDetalleOpen] = useState(false);
 
-  // datos pedido (opcionales)
+  // datos pedido
   const [nombre, setNombre] = useState("");
   const [numero, setNumero] = useState("");
-  const [direccion, setDireccion] = useState("");
-  const [valorDomicilio, setValorDomicilio] = useState(0);
   const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia">("efectivo");
-  const [estado, setEstado] = useState<"pidiendo" | "impreso">("pidiendo");
+
+  // dirección (según modo)
+  const [mesaLugar, setMesaLugar] = useState("");
+  const [barrio, setBarrio] = useState("");
+  const [direccionExacta, setDireccionExacta] = useState("");
+  const [recogerEn, setRecogerEn] = useState("");
+
+  const [valorDomicilio, setValorDomicilio] = useState(0);
 
   // toast
   const [toast, setToast] = useState<Toast>(null);
@@ -494,9 +627,43 @@ const Manual: React.FC = () => {
     }
   };
 
+  /** fetch domicilios */
+  const fetchDomicilios = async () => {
+    setLoadingDomicilios(true);
+    try {
+      const res = await fetch(DOMICILIOS_API);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as DomicilioRow[];
+      const arr = Array.isArray(data) ? data : [];
+      const clean = arr
+        .filter((x) => x && x.barrio)
+        .map((x) => ({ barrio: String(x.barrio), precio: Number(x.precio) || 0 }));
+      clean.sort((a, b) => a.barrio.localeCompare(b.barrio, "es"));
+      setDomicilios(clean);
+    } catch (e) {
+      console.error("domicilios error", e);
+      showToast({ type: "error", msg: "No se pudieron cargar domicilios." });
+    } finally {
+      setLoadingDomicilios(false);
+    }
+  };
+
   useEffect(() => {
     fetchMenu();
   }, []);
+
+  // Lazy-load domicilios cuando entras a delivery
+  useEffect(() => {
+    if (mode === "llevar" && domicilios.length === 0 && !loadingDomicilios) {
+      fetchDomicilios();
+    }
+    if (mode !== "llevar") {
+      setValorDomicilio(0);
+    }
+    if (mode === "recoger") {
+      setValorDomicilio(0);
+    }
+  }, [mode]); // eslint-disable-line
 
   /** categorías */
   const allCategories = useMemo(() => {
@@ -571,8 +738,8 @@ const Manual: React.FC = () => {
         return { ...ci, baseValor: base, extraLlevar: extra, priceUnit };
       })
     );
-    if (!isTakeaway) setValorDomicilio(0);
-  }, [isTakeaway, menuById]);
+    if (!hasDelivery) setValorDomicilio(0);
+  }, [isTakeaway, hasDelivery, menuById]);
 
   /** totals */
   const totalRestaurante = useMemo(
@@ -580,9 +747,18 @@ const Manual: React.FC = () => {
     [cart]
   );
   const totalFinal = useMemo(
-    () => totalRestaurante + (isTakeaway ? (Number(valorDomicilio) || 0) : 0),
-    [totalRestaurante, valorDomicilio, isTakeaway]
+    () => totalRestaurante + (hasDelivery ? (Number(valorDomicilio) || 0) : 0),
+    [totalRestaurante, valorDomicilio, hasDelivery]
   );
+
+  /** qty map (para mostrar contador en el menú) */
+  const qtyById = useMemo(() => {
+    const m: Record<string, number> = {};
+    cart.forEach((c) => (m[c.id] = (m[c.id] || 0) + (c.quantity || 0)));
+    return m;
+  }, [cart]);
+
+  const cartCount = useMemo(() => cart.reduce((acc, it) => acc + (it.quantity || 0), 0), [cart]);
 
   /** cart ops */
   const addToCart = (item: MenuItemFull) => {
@@ -608,7 +784,125 @@ const Manual: React.FC = () => {
 
   const toggleGroup = (id: string) => setExpanded((p) => ({ ...p, [id]: !(p[id] ?? true) }));
 
-  /** save order: SOLO exige que haya detalle (items) */
+  /** barrio autocomplete */
+  const barrioSuggestions = useMemo(() => {
+    const q = norm(barrio);
+    const base = domicilios;
+    if (!q) return base.slice(0, 18);
+    return base.filter((d) => norm(d.barrio).includes(q)).slice(0, 18);
+  }, [barrio, domicilios]);
+
+  const exactMatch = useMemo(() => {
+    const q = norm(barrio);
+    if (!q) return null;
+    return domicilios.find((d) => norm(d.barrio) === q) || null;
+  }, [barrio, domicilios]);
+
+  useEffect(() => {
+    // si escribe un barrio exacto, autollenar domicilio
+    if (hasDelivery && exactMatch && (Number(valorDomicilio) || 0) !== (Number(exactMatch.precio) || 0)) {
+      setValorDomicilio(Number(exactMatch.precio) || 0);
+    }
+  }, [hasDelivery, exactMatch]); // eslint-disable-line
+
+  const selectBarrio = (b: string, precio: number) => {
+    setBarrio(b);
+    setValorDomicilio(Number(precio) || 0);
+    setBarrioOpen(false);
+  };
+
+  const onBarrioFocus = () => {
+    if (barrioCloseTimer.current) window.clearTimeout(barrioCloseTimer.current);
+    setBarrioOpen(true);
+  };
+  const onBarrioBlur = () => {
+    barrioCloseTimer.current = window.setTimeout(() => setBarrioOpen(false), 120);
+  };
+
+  /** Preview detalle */
+  const detallePreview = useMemo(() => {
+    const raw = serializeCartToDetalle(cart);
+    const parsed = parseDetailsForView(raw);
+    return { raw, parsed };
+  }, [cart]);
+
+  /** mode control */
+  const ModePill = () => (
+    <div className="flex bg-slate-100 p-1 rounded-2xl w-full sm:w-auto">
+      <button
+        onClick={() => setMode("mesa")}
+        className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
+          mode === "mesa" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:bg-slate-200"
+        }`}
+      >
+        <Utensils size={16} /> Mesa
+      </button>
+      <button
+        onClick={() => setMode("llevar")}
+        className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
+          mode === "llevar" ? "bg-amber-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-200"
+        }`}
+      >
+        <Package size={16} /> Domicilio
+      </button>
+      <button
+        onClick={() => setMode("recoger")}
+        className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
+          mode === "recoger" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-slate-200"
+        }`}
+      >
+        <Store size={16} /> Recoger
+      </button>
+    </div>
+  );
+
+  /** pago radio */
+  const PayPill = () => (
+    <div className="grid grid-cols-2 gap-2">
+      <button
+        onClick={() => setMetodoPago("efectivo")}
+        className={`flex items-center justify-center gap-2 px-3 py-2 rounded-2xl border font-extrabold text-sm transition-all ${
+          metodoPago === "efectivo"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+            : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+        }`}
+        aria-pressed={metodoPago === "efectivo"}
+      >
+        <Banknote size={16} />
+        Efectivo
+      </button>
+      <button
+        onClick={() => setMetodoPago("transferencia")}
+        className={`flex items-center justify-center gap-2 px-3 py-2 rounded-2xl border font-extrabold text-sm transition-all ${
+          metodoPago === "transferencia"
+            ? "bg-amber-50 border-amber-200 text-amber-800"
+            : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+        }`}
+        aria-pressed={metodoPago === "transferencia"}
+      >
+        <ArrowLeftRight size={16} />
+        Transferencia
+      </button>
+    </div>
+  );
+
+  /** Dirección final (un solo campo) */
+  const buildDireccionFinal = () => {
+    if (mode === "mesa") return mesaLugar.trim() || "MESA";
+    if (mode === "recoger") {
+      const x = recogerEn.trim();
+      return x ? `RECOGER: ${x}` : "RECOGER";
+    }
+    // llevar: "direccion exacta (barrio)"
+    const d = direccionExacta.trim();
+    const b = barrio.trim();
+    if (d && b) return `${d} (${b})`;
+    if (d) return b ? `${d} (${b})` : d;
+    if (b) return `(${b})`;
+    return "PARA LLEVAR";
+  };
+
+  /** save order */
   const saveOrder = async (opts: { print: boolean }) => {
     if (!cart.length || totalRestaurante <= 0) {
       showToast({ type: "info", msg: "Agrega productos para guardar." });
@@ -617,9 +911,9 @@ const Manual: React.FC = () => {
 
     const numeroFinal = (numero.trim() || makeNumeroFallback()).trim();
     const nombreFinal = nombre.trim() || "Cliente";
-    const direccionFinal = direccion.trim() || (isTakeaway ? "PARA LLEVAR" : "MESA");
+    const direccionFinal = buildDireccionFinal();
     const detalle = serializeCartToDetalle(cart);
-    const domicilio = isTakeaway ? (Number(valorDomicilio) || 0) : 0;
+    const domicilio = hasDelivery ? (Number(valorDomicilio) || 0) : 0;
 
     const payload: any = {
       nombre: nombreFinal,
@@ -628,7 +922,7 @@ const Manual: React.FC = () => {
       valor_restaurante: totalRestaurante,
       valor_domicilio: domicilio,
       metodo_pago: metodoPago,
-      estado: opts.print ? "impreso" : estado,
+      estado: opts.print ? "impreso" : "pidiendo",
       numero: numeroFinal,
     };
 
@@ -646,14 +940,15 @@ const Manual: React.FC = () => {
       clearAll();
       setNombre("");
       setNumero("");
-      setDireccion("");
+      setMesaLugar("");
+      setBarrio("");
+      setDireccionExacta("");
+      setRecogerEn("");
       setValorDomicilio(0);
       setMetodoPago("efectivo");
-      setEstado("pidiendo");
       setCartOpenMobile(false);
 
       if (opts.print) {
-        // fallback: imprimimos con lo que tenemos (sin GET de pedidos)
         await printTicket({
           row_number: 0,
           fecha: new Date().toISOString(),
@@ -673,39 +968,6 @@ const Manual: React.FC = () => {
     }
   };
 
-  /** Preview detalle */
-  const detallePreview = useMemo(() => {
-    const raw = serializeCartToDetalle(cart);
-    const parsed = parseDetailsForView(raw);
-    return { raw, parsed };
-  }, [cart]);
-
-  /** UX: conteo total items */
-  const cartCount = useMemo(() => cart.reduce((acc, it) => acc + (it.quantity || 0), 0), [cart]);
-
-  /** ===== UI helpers ===== */
-  const ModePill = () => (
-    <div className="flex bg-slate-100 p-1 rounded-2xl w-full sm:w-auto">
-      <button
-        onClick={() => setIsTakeaway(false)}
-        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
-          !isTakeaway ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:bg-slate-200"
-        }`}
-      >
-        <Utensils size={16} /> Mesa
-      </button>
-      <button
-        onClick={() => setIsTakeaway(true)}
-        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
-          isTakeaway ? "bg-amber-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-200"
-        }`}
-      >
-        <Package size={16} /> Llevar
-      </button>
-    </div>
-  );
-
-  /** ===== layout ===== */
   return (
     <div className="relative bg-slate-50">
       {/* TOAST */}
@@ -730,7 +992,7 @@ const Manual: React.FC = () => {
                 <div>
                   <div className="font-black text-slate-900 leading-tight">Pedido Manual</div>
                   <div className="text-[11px] text-slate-500 leading-tight">
-                    Toca productos para agregarlos rápido
+                    + muestra cantidad • - para corregir
                   </div>
                 </div>
               </div>
@@ -758,19 +1020,17 @@ const Manual: React.FC = () => {
               </div>
             </div>
 
-            {/* right: mode + mobile cart button */}
+            {/* right: mode + mobile cart */}
             <div className="flex gap-2 items-center w-full lg:w-auto">
               <ModePill />
 
-              {/* botón móvil: abre carrito */}
               <button
                 onClick={() => setCartOpenMobile(true)}
                 className="lg:hidden shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold"
               >
                 <ShoppingBag size={18} />
                 <span className="text-sm">
-                  Carrito
-                  {cartCount > 0 ? ` (${cartCount})` : ""}
+                  Caja{cartCount > 0 ? ` (${cartCount})` : ""}
                 </span>
               </button>
             </div>
@@ -826,15 +1086,19 @@ const Manual: React.FC = () => {
                       >
                         <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-white border-b border-amber-100">
                           <h3 className="font-extrabold text-slate-900 text-sm leading-tight">{group.title}</h3>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Toca el tamaño para agregar</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Usa + / - para ajustar</p>
                         </div>
+
                         <div className="p-3 grid grid-cols-2 gap-2">
                           {group.items.map((item) => {
                             const unit = computeUnitPrice(item, isTakeaway);
                             const disabled = !item.disponible;
+                            const id = String(item.id);
+                            const qty = qtyById[id] || 0;
+
                             return (
                               <button
-                                key={String(item.id)}
+                                key={id}
                                 onClick={() => addToCart(item)}
                                 disabled={disabled}
                                 className={`rounded-3xl border px-3 py-3 text-left active:scale-[0.98] transition-all ${
@@ -846,14 +1110,22 @@ const Manual: React.FC = () => {
                                 <div className="text-base font-black text-slate-900">
                                   {formatPrice(unit).replace(",00", "")}
                                 </div>
+
                                 {isTakeaway && item.para_llevar && (item.precio_adicional_llevar || 0) > 0 && (
                                   <div className="text-[10px] font-extrabold text-amber-700 mt-1">
-                                    +{formatPrice(item.precio_adicional_llevar || 0)} llevar
+                                    +{formatPrice(item.precio_adicional_llevar || 0)} icopor
                                   </div>
                                 )}
-                                {!item.disponible && (
-                                  <div className="text-[10px] font-extrabold uppercase mt-1">Agotado</div>
-                                )}
+
+                                <div className="mt-2">
+                                  <QtyPill
+                                    qty={qty}
+                                    disabled={disabled}
+                                    compact
+                                    onPlus={() => addToCart(item)}
+                                    onMinus={() => dec(id)}
+                                  />
+                                </div>
                               </button>
                             );
                           })}
@@ -892,9 +1164,12 @@ const Manual: React.FC = () => {
                             {group.items.map((item) => {
                               const unit = computeUnitPrice(item, isTakeaway);
                               const disabled = !item.disponible;
+                              const id = String(item.id);
+                              const qty = qtyById[id] || 0;
+
                               return (
                                 <button
-                                  key={String(item.id)}
+                                  key={id}
                                   onClick={() => addToCart(item)}
                                   disabled={disabled}
                                   className={`rounded-3xl border px-3 py-3 active:scale-[0.98] transition-all text-left ${
@@ -903,18 +1178,30 @@ const Manual: React.FC = () => {
                                       : "bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50/40"
                                   }`}
                                 >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="text-sm font-extrabold text-slate-900 truncate">
-                                      {(item.nombre || "").replace(/^Almuerzo (con )?/i, "")}
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-extrabold text-slate-900 truncate">
+                                        {(item.nombre || "").replace(/^Almuerzo (con )?/i, "")}
+                                      </div>
+                                      <div className="mt-1 text-xs font-black text-slate-900">{formatPrice(unit)}</div>
+                                      {isTakeaway && item.para_llevar && (item.precio_adicional_llevar || 0) > 0 && (
+                                        <div className="text-[10px] font-extrabold text-amber-700 mt-1">
+                                          +{formatPrice(item.precio_adicional_llevar || 0)} icopor
+                                        </div>
+                                      )}
                                     </div>
-                                    <PlusCircle size={18} className={disabled ? "text-slate-200" : "text-amber-500"} />
+
+                                    {/* control qty */}
+                                    <div className="shrink-0">
+                                      <QtyPill
+                                        qty={qty}
+                                        disabled={disabled}
+                                        compact
+                                        onPlus={() => addToCart(item)}
+                                        onMinus={() => dec(id)}
+                                      />
+                                    </div>
                                   </div>
-                                  <div className="mt-1 text-xs font-black text-slate-900">{formatPrice(unit)}</div>
-                                  {isTakeaway && item.para_llevar && (item.precio_adicional_llevar || 0) > 0 && (
-                                    <div className="text-[10px] font-extrabold text-amber-700 mt-1">
-                                      +{formatPrice(item.precio_adicional_llevar || 0)} llevar
-                                    </div>
-                                  )}
                                 </button>
                               );
                             })}
@@ -928,6 +1215,8 @@ const Manual: React.FC = () => {
                   const item = group.items[0];
                   const unit = computeUnitPrice(item, isTakeaway);
                   const disabled = !item.disponible;
+                  const id = String(item.id);
+                  const qty = qtyById[id] || 0;
 
                   return (
                     <button
@@ -940,17 +1229,33 @@ const Manual: React.FC = () => {
                           : "border-slate-200 hover:border-amber-300 hover:shadow-md"
                       }`}
                     >
-                      <div className="font-extrabold text-slate-900 text-sm leading-snug">{item.nombre}</div>
-                      {item.descripcion ? (
-                        <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">{item.descripcion}</div>
-                      ) : (
-                        <div className="text-[11px] text-slate-400 mt-1">—</div>
-                      )}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-extrabold text-slate-900 text-sm leading-snug">{item.nombre}</div>
+                          {item.descripcion ? (
+                            <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">{item.descripcion}</div>
+                          ) : (
+                            <div className="text-[11px] text-slate-400 mt-1">—</div>
+                          )}
+                        </div>
+
+                        <div className="shrink-0">
+                          <QtyPill
+                            qty={qty}
+                            disabled={disabled}
+                            compact
+                            onPlus={() => addToCart(item)}
+                            onMinus={() => dec(id)}
+                          />
+                        </div>
+                      </div>
+
                       <div className="mt-3 flex items-end justify-between border-t border-slate-100 pt-3">
                         <div>
                           <div className="text-xs text-slate-500 font-semibold">Precio</div>
                           <div className="text-lg font-black text-slate-900">{formatPrice(unit)}</div>
                         </div>
+
                         <PlusCircle size={22} className={disabled ? "text-slate-200" : "text-amber-500"} />
                       </div>
                     </button>
@@ -967,11 +1272,11 @@ const Manual: React.FC = () => {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${isTakeaway ? "bg-amber-500" : "bg-emerald-500"}`} />
+                    <div className={`w-2.5 h-2.5 rounded-full ${mode === "llevar" ? "bg-amber-500" : mode === "recoger" ? "bg-slate-900" : "bg-emerald-500"}`} />
                     <h2 className="font-extrabold text-slate-900">Caja</h2>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    {isTakeaway ? "Para llevar: suma adicional (si aplica)." : "Mesa: valor base."}
+                    {mode === "mesa" ? "Mesa: valor base." : mode === "recoger" ? "Recoger: domicilio 0 (suma icopor si aplica)." : "Domicilio: barrio + dirección (auto precio)."}
                   </p>
                 </div>
 
@@ -980,6 +1285,52 @@ const Manual: React.FC = () => {
                     {cartCount} item{cartCount === 1 ? "" : "s"}
                   </div>
                 )}
+              </div>
+
+              {/* acciones arriba (sin scroll) */}
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <button
+                  onClick={clearAll}
+                  className="py-2.5 rounded-2xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
+                  title="Limpiar"
+                >
+                  <Trash2 size={18} />
+                </button>
+
+                <button
+                  onClick={() => saveOrder({ print: false })}
+                  className="py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Save size={18} /> Guardar
+                </button>
+
+                <button
+                  onClick={() => saveOrder({ print: true })}
+                  className="py-2.5 rounded-2xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
+                  title="Guardar e imprimir"
+                >
+                  <Printer size={18} /> Imprimir
+                </button>
+              </div>
+
+              {/* totales arriba también */}
+              <div className="mt-3 bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-[11px] text-slate-500 font-semibold">Restaurante</div>
+                    <div className="text-xl font-black text-slate-900">{formatPrice(totalRestaurante)}</div>
+                  </div>
+                  {hasDelivery && (
+                    <div className="text-right">
+                      <div className="text-[11px] text-slate-500 font-semibold">Domicilio</div>
+                      <div className="text-lg font-black text-slate-900">{formatPrice(valorDomicilio || 0)}</div>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2 flex justify-between items-center border-t border-slate-200 pt-2">
+                  <div className="text-sm font-extrabold text-slate-700">Total</div>
+                  <div className="text-2xl font-black text-slate-900">{formatPrice(totalFinal)}</div>
+                </div>
               </div>
 
               {/* datos */}
@@ -1005,54 +1356,124 @@ const Manual: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                  <MapPin size={14} className="text-slate-400 mr-2" />
-                  <input
-                    value={direccion}
-                    onChange={(e) => setDireccion(e.target.value)}
-                    placeholder={isTakeaway ? "Dirección (opcional)" : "Mesa / lugar (opcional)"}
-                    className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
+                {/* dirección por modo */}
+                {mode === "mesa" && (
                   <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                    <CreditCard size={14} className="text-slate-400 mr-2" />
-                    <select
-                      value={metodoPago}
-                      onChange={(e) => setMetodoPago(e.target.value as any)}
-                      className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
-                    >
-                      <option value="efectivo">efectivo</option>
-                      <option value="transferencia">transferencia</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                    <span className="text-[10px] font-extrabold text-slate-500 mr-2">Estado</span>
-                    <select
-                      value={estado}
-                      onChange={(e) => setEstado(e.target.value as any)}
-                      className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
-                    >
-                      <option value="pidiendo">pidiendo</option>
-                      <option value="impreso">impreso</option>
-                    </select>
-                  </div>
-                </div>
-
-                {isTakeaway && (
-                  <div className="flex items-center bg-amber-50 rounded-2xl px-3 py-2 border border-amber-200">
-                    <span className="text-[10px] font-extrabold text-amber-800 mr-2">Domicilio</span>
+                    <MapPin size={14} className="text-slate-400 mr-2" />
                     <input
-                      type="number"
-                      value={valorDomicilio}
-                      onChange={(e) => setValorDomicilio(toInt(e.target.value))}
-                      placeholder="0"
-                      className="bg-transparent text-sm w-full outline-none text-slate-900 placeholder-amber-500"
+                      value={mesaLugar}
+                      onChange={(e) => setMesaLugar(e.target.value)}
+                      placeholder="Mesa / lugar (opcional)"
+                      className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
                     />
                   </div>
                 )}
+
+                {mode === "recoger" && (
+                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                    <Store size={14} className="text-slate-400 mr-2" />
+                    <input
+                      value={recogerEn}
+                      onChange={(e) => setRecogerEn(e.target.value)}
+                      placeholder="Recoger (opcional: nombre / referencia)"
+                      className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                    />
+                  </div>
+                )}
+
+                {mode === "llevar" && (
+                  <>
+                    {/* Barrio autocomplete */}
+                    <div className="relative">
+                      <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                        <MapPin size={14} className="text-slate-400 mr-2" />
+                        <input
+                          value={barrio}
+                          onChange={(e) => {
+                            setBarrio(e.target.value);
+                            setBarrioOpen(true);
+                          }}
+                          onFocus={onBarrioFocus}
+                          onBlur={onBarrioBlur}
+                          placeholder={loadingDomicilios ? "Cargando barrios..." : "Barrio (autocompletar)"}
+                          className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                        />
+
+                        <div className="ml-2 shrink-0">
+                          {loadingDomicilios ? (
+                            <span className="text-[10px] font-extrabold text-slate-400">...</span>
+                          ) : exactMatch ? (
+                            <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded-full">
+                              {money(exactMatch.precio)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200 px-2 py-1 rounded-full">
+                              {money(valorDomicilio || 0)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {barrioOpen && barrioSuggestions.length > 0 && (
+                        <div className="absolute z-50 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                          <div className="max-h-56 overflow-y-auto">
+                            {barrioSuggestions.map((d) => (
+                              <button
+                                key={d.barrio}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  selectBarrio(d.barrio, d.precio);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between gap-3"
+                              >
+                                <span className="text-sm font-extrabold text-slate-900 truncate">{d.barrio}</span>
+                                <span className="text-[11px] font-black text-slate-700 whitespace-nowrap">
+                                  {money(d.precio)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Dirección exacta */}
+                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                      <MessageSquare size={14} className="text-slate-400 mr-2" />
+                      <input
+                        value={direccionExacta}
+                        onChange={(e) => setDireccionExacta(e.target.value)}
+                        placeholder="Dirección exacta (ej: Cra 12 #34-56)"
+                        className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                      />
+                    </div>
+
+                    {/* ajuste manual de domicilio (opcional) */}
+                    <div className="flex items-center bg-amber-50 rounded-2xl px-3 py-2 border border-amber-200">
+                      <span className="text-[10px] font-extrabold text-amber-800 mr-2">Domicilio</span>
+                      <input
+                        type="number"
+                        value={valorDomicilio}
+                        onChange={(e) => setValorDomicilio(toInt(e.target.value))}
+                        placeholder="0"
+                        className="bg-transparent text-sm w-full outline-none text-slate-900 placeholder-amber-500"
+                      />
+                    </div>
+
+                    <div className="text-[11px] text-slate-500">
+                      Se enviará: <span className="font-extrabold text-slate-700">{buildDireccionFinal()}</span>
+                    </div>
+                  </>
+                )}
+
+                {/* Pago */}
+                <div className="mt-1">
+                  <div className="text-[11px] font-extrabold text-slate-600 mb-2 flex items-center gap-2">
+                    <CreditCard size={14} />
+                    Método de pago
+                  </div>
+                  <PayPill />
+                </div>
               </div>
             </div>
 
@@ -1075,7 +1496,7 @@ const Manual: React.FC = () => {
                             {formatPrice(item.priceUnit)} c/u
                             {isTakeaway && item.extraLlevar > 0 && (
                               <span className="ml-2 text-amber-700 font-extrabold">
-                                (+{formatPrice(item.extraLlevar)})
+                                (+{formatPrice(item.extraLlevar)} icopor)
                               </span>
                             )}
                           </p>
@@ -1144,59 +1565,12 @@ const Manual: React.FC = () => {
                 </>
               )}
             </div>
-
-            {/* footer */}
-            <div className="bg-white border-t border-slate-200 p-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-[11px] text-slate-500 font-semibold">Restaurante</div>
-                  <div className="text-xl font-black text-slate-900">{formatPrice(totalRestaurante)}</div>
-                </div>
-                {isTakeaway && (
-                  <div className="text-right">
-                    <div className="text-[11px] text-slate-500 font-semibold">Domicilio</div>
-                    <div className="text-lg font-black text-slate-900">{formatPrice(valorDomicilio || 0)}</div>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3 flex justify-between items-center border-t border-slate-100 pt-3">
-                <div className="text-sm font-extrabold text-slate-700">Total</div>
-                <div className="text-2xl font-black text-slate-900">{formatPrice(totalFinal)}</div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <button
-                  onClick={clearAll}
-                  className="py-3 rounded-3xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
-                  title="Limpiar"
-                >
-                  <Trash2 size={18} />
-                </button>
-
-                <button
-                  onClick={() => saveOrder({ print: false })}
-                  className="py-3 rounded-3xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Save size={18} /> Guardar
-                </button>
-
-                <button
-                  onClick={() => saveOrder({ print: true })}
-                  className="py-3 rounded-3xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
-                  title="Guardar e imprimir"
-                >
-                  <Printer size={18} /> Imprimir
-                </button>
-              </div>
-            </div>
           </aside>
         </div>
       </div>
 
       {/* ===== MOBILE: bottom bar + bottom sheet cart ===== */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50">
-        {/* bar */}
         <div className="bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-2">
             <button
@@ -1205,11 +1579,9 @@ const Manual: React.FC = () => {
             >
               <div className="flex items-center gap-2">
                 <ShoppingBag size={18} />
-                <span>Ver carrito</span>
+                <span>Ver caja</span>
                 {cartCount > 0 && (
-                  <span className="ml-1 text-[11px] bg-white/15 px-2 py-0.5 rounded-full">
-                    {cartCount}
-                  </span>
+                  <span className="ml-1 text-[11px] bg-white/15 px-2 py-0.5 rounded-full">{cartCount}</span>
                 )}
               </div>
               <div className="text-sm">{formatPrice(totalFinal)}</div>
@@ -1217,7 +1589,6 @@ const Manual: React.FC = () => {
           </div>
         </div>
 
-        {/* sheet */}
         {cartOpenMobile && (
           <div className="fixed inset-0 z-[80]">
             <button
@@ -1231,7 +1602,7 @@ const Manual: React.FC = () => {
                   <div>
                     <div className="font-black text-slate-900">Caja</div>
                     <div className="text-[11px] text-slate-500">
-                      {isTakeaway ? "Para llevar: adicional si aplica." : "Mesa: valor base."}
+                      Botones arriba • Ajusta con +/-
                     </div>
                   </div>
                   <button
@@ -1243,81 +1614,53 @@ const Manual: React.FC = () => {
                   </button>
                 </div>
 
-                {/* datos */}
-                <div className="mt-3 grid gap-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                      <User size={14} className="text-slate-400 mr-2" />
-                      <input
-                        value={nombre}
-                        onChange={(e) => setNombre(e.target.value)}
-                        placeholder="Nombre (opcional)"
-                        className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
-                      />
+                {/* acciones arriba en móvil */}
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button
+                    onClick={clearAll}
+                    className="py-2.5 rounded-2xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
+                    title="Limpiar"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+
+                  <button
+                    onClick={() => saveOrder({ print: false })}
+                    className="py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Save size={18} /> Guardar
+                  </button>
+
+                  <button
+                    onClick={() => saveOrder({ print: true })}
+                    className="py-2.5 rounded-2xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
+                    title="Guardar e imprimir"
+                  >
+                    <Printer size={18} /> Imprimir
+                  </button>
+                </div>
+
+                {/* totales */}
+                <div className="mt-3 bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="text-[11px] text-slate-500 font-semibold">Restaurante</div>
+                      <div className="text-xl font-black text-slate-900">{formatPrice(totalRestaurante)}</div>
                     </div>
-                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                      <Phone size={14} className="text-slate-400 mr-2" />
-                      <input
-                        value={numero}
-                        onChange={(e) => setNumero(e.target.value)}
-                        placeholder="Número (opcional)"
-                        className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
-                      />
-                    </div>
+                    {hasDelivery && (
+                      <div className="text-right">
+                        <div className="text-[11px] text-slate-500 font-semibold">Domicilio</div>
+                        <div className="text-lg font-black text-slate-900">{formatPrice(valorDomicilio || 0)}</div>
+                      </div>
+                    )}
                   </div>
-
-                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                    <MapPin size={14} className="text-slate-400 mr-2" />
-                    <input
-                      value={direccion}
-                      onChange={(e) => setDireccion(e.target.value)}
-                      placeholder={isTakeaway ? "Dirección (opcional)" : "Mesa / lugar (opcional)"}
-                      className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
-                    />
+                  <div className="mt-2 flex justify-between items-center border-t border-slate-200 pt-2">
+                    <div className="text-sm font-extrabold text-slate-700">Total</div>
+                    <div className="text-2xl font-black text-slate-900">{formatPrice(totalFinal)}</div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                      <CreditCard size={14} className="text-slate-400 mr-2" />
-                      <select
-                        value={metodoPago}
-                        onChange={(e) => setMetodoPago(e.target.value as any)}
-                        className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
-                      >
-                        <option value="efectivo">efectivo</option>
-                        <option value="transferencia">transferencia</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                      <span className="text-[10px] font-extrabold text-slate-500 mr-2">Estado</span>
-                      <select
-                        value={estado}
-                        onChange={(e) => setEstado(e.target.value as any)}
-                        className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
-                      >
-                        <option value="pidiendo">pidiendo</option>
-                        <option value="impreso">impreso</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {isTakeaway && (
-                    <div className="flex items-center bg-amber-50 rounded-2xl px-3 py-2 border border-amber-200">
-                      <span className="text-[10px] font-extrabold text-amber-800 mr-2">Domicilio</span>
-                      <input
-                        type="number"
-                        value={valorDomicilio}
-                        onChange={(e) => setValorDomicilio(toInt(e.target.value))}
-                        placeholder="0"
-                        className="bg-transparent text-sm w-full outline-none text-slate-900 placeholder-amber-500"
-                      />
-                    </div>
-                  )}
                 </div>
               </div>
 
-              {/* list */}
               <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50">
                 {cart.length === 0 ? (
                   <div className="py-12 text-center text-slate-400">
@@ -1335,7 +1678,7 @@ const Manual: React.FC = () => {
                               {formatPrice(item.priceUnit)} c/u
                               {isTakeaway && item.extraLlevar > 0 && (
                                 <span className="ml-2 text-amber-700 font-extrabold">
-                                  (+{formatPrice(item.extraLlevar)})
+                                  (+{formatPrice(item.extraLlevar)} icopor)
                                 </span>
                               )}
                             </p>
@@ -1390,11 +1733,7 @@ const Manual: React.FC = () => {
                         className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
                       >
                         <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
-                        {detalleOpen ? (
-                          <ChevronUp size={16} className="text-slate-500" />
-                        ) : (
-                          <ChevronDown size={16} className="text-slate-500" />
-                        )}
+                        {detalleOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
                       </button>
                       {detalleOpen && (
                         <div className="p-3">
@@ -1408,54 +1747,10 @@ const Manual: React.FC = () => {
                 )}
               </div>
 
-              {/* totals + actions */}
               <div className="p-3 border-t border-slate-200 bg-white">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-[11px] text-slate-500 font-semibold">Restaurante</div>
-                    <div className="text-xl font-black text-slate-900">{formatPrice(totalRestaurante)}</div>
-                  </div>
-                  {isTakeaway && (
-                    <div className="text-right">
-                      <div className="text-[11px] text-slate-500 font-semibold">Domicilio</div>
-                      <div className="text-lg font-black text-slate-900">{formatPrice(valorDomicilio || 0)}</div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-3 flex justify-between items-center border-t border-slate-100 pt-3">
-                  <div className="text-sm font-extrabold text-slate-700">Total</div>
-                  <div className="text-2xl font-black text-slate-900">{formatPrice(totalFinal)}</div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <button
-                    onClick={clearAll}
-                    className="py-3 rounded-3xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
-                    title="Limpiar"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-
-                  <button
-                    onClick={() => saveOrder({ print: false })}
-                    className="py-3 rounded-3xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Save size={18} /> Guardar
-                  </button>
-
-                  <button
-                    onClick={() => saveOrder({ print: true })}
-                    className="py-3 rounded-3xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
-                    title="Guardar e imprimir"
-                  >
-                    <Printer size={18} /> Imprimir
-                  </button>
-                </div>
-
                 <button
                   onClick={() => setCartOpenMobile(false)}
-                  className="mt-2 w-full py-3 rounded-3xl bg-slate-100 text-slate-800 font-extrabold hover:bg-slate-200"
+                  className="w-full py-3 rounded-3xl bg-slate-100 text-slate-800 font-extrabold hover:bg-slate-200"
                 >
                   Seguir agregando
                 </button>
