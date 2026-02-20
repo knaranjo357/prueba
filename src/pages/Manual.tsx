@@ -1,5 +1,5 @@
 // src/pages/Manual.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   RefreshCw,
@@ -97,7 +97,8 @@ const norm = (s: string) => (s || "").trim().toLowerCase();
 
 const computeUnitPrice = (item: MenuItemFull, isTakeaway: boolean) => {
   const base = Number(item.valor) || 0;
-  const extra = isTakeaway && item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
+  const extra =
+    isTakeaway && item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
   return base + extra;
 };
 
@@ -128,7 +129,9 @@ const splitByCommaOutsideParens = (s: string) => splitOutsideParens(s, [","]);
 
 const parseDetailsForView = (raw: string) => {
   if (!raw) return [];
-  const itemStrings = splitOutsideParens(raw, [";", "|"]).map((x) => x.trim()).filter(Boolean);
+  const itemStrings = splitOutsideParens(raw, [";", "|"])
+    .map((x) => x.trim())
+    .filter(Boolean);
 
   return itemStrings.map((itemStr) => {
     const parts = splitByCommaOutsideParens(itemStr).map((x) => x.trim());
@@ -165,7 +168,7 @@ const serializeCartToDetalle = (items: CartItem[]) =>
     })
     .join("\n");
 
-/** ===== ticket helpers (mismos de antes) ===== */
+/** ===== ticket helpers ===== */
 const COLS = 42;
 const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join("");
 const padRight = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + repeat(" ", n - s.length));
@@ -274,6 +277,7 @@ const bytesToBase64 = (bytes: number[]): string => {
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 };
+
 const cp1252Map: Record<string, number> = {
   Á: 0xc1,
   É: 0xc9,
@@ -304,6 +308,7 @@ const cp1252Map: Record<string, number> = {
   "–": 0x96,
   "…": 0x85,
 };
+
 const asciiFallback: Record<string, string> = {
   "“": '"',
   "”": '"',
@@ -314,6 +319,7 @@ const asciiFallback: Record<string, string> = {
   "…": "...",
   "€": "EUR",
 };
+
 const encodeCP1252 = (str: string): number[] => {
   const bytes: number[] = [];
   for (const ch of str) {
@@ -335,32 +341,37 @@ const encodeCP1252 = (str: string): number[] => {
       for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0));
       continue;
     }
-    bytes.push(0x3f);
+    bytes.push(0x3f); // '?'
   }
   return bytes;
 };
+
 const isAndroid = () => /Android/i.test(navigator.userAgent || "");
+
 const buildEscposFromLines = (lines: string[]): number[] => {
   const bytes: number[] = [];
-  bytes.push(0x1b, 0x40);
-  bytes.push(0x1b, 0x74, 0x10);
-  bytes.push(0x1b, 0x61, 0x00);
-  bytes.push(0x1d, 0x21, 0x01);
+  bytes.push(0x1b, 0x40); // init
+  bytes.push(0x1b, 0x74, 0x10); // codepage 16
+  bytes.push(0x1b, 0x61, 0x00); // left
+  bytes.push(0x1d, 0x21, 0x01); // bold-ish
   const body = lines.join("\n") + "\n";
   bytes.push(...encodeCP1252(body));
   bytes.push(0x0a, 0x0a, 0x0a);
-  bytes.push(0x1d, 0x56, 0x00);
+  bytes.push(0x1d, 0x56, 0x00); // cut
   return bytes;
 };
+
 const sendToRawBT = async (ticketLines: string[]) => {
   if (!isAndroid()) throw new Error("Requiere Android con RawBT.");
   const escposBytes = buildEscposFromLines(ticketLines);
   const base64 = bytesToBase64(escposBytes);
   const url = `rawbt:base64,${base64}`;
+
   try {
     (window as any).location.href = url;
     return;
   } catch {}
+
   try {
     const a = document.createElement("a");
     a.href = url;
@@ -370,6 +381,7 @@ const sendToRawBT = async (ticketLines: string[]) => {
     document.body.removeChild(a);
     return;
   } catch {}
+
   throw new Error("No se pudo invocar RawBT.");
 };
 
@@ -492,10 +504,17 @@ const toastStyle = (t: Toast) => {
   return "bg-slate-900";
 };
 
-/** ===== UI bits ===== */
+/** ===== UI helpers ===== */
 const stop = (e: React.MouseEvent) => {
   e.preventDefault();
   e.stopPropagation();
+};
+
+const isTypingElement = (el: EventTarget | null) => {
+  const node = el as HTMLElement | null;
+  if (!node) return false;
+  const tag = (node.tagName || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || (node as any).isContentEditable;
 };
 
 const QtyPill: React.FC<{
@@ -524,8 +543,11 @@ const QtyPill: React.FC<{
           stop(e);
           onPlus();
         }}
-        className={`inline-flex items-center gap-2 ${compact ? "px-3 py-1.5" : "px-4 py-2"} rounded-full bg-amber-600 text-white font-extrabold hover:bg-amber-700 active:scale-[0.98]`}
+        className={`inline-flex items-center gap-2 ${
+          compact ? "px-3 py-1.5" : "px-4 py-2"
+        } rounded-full bg-amber-600 text-white font-extrabold hover:bg-amber-700 active:scale-[0.98]`}
         title="Agregar"
+        aria-label="Agregar"
       >
         <Plus size={compact ? 14 : 16} />
         <span className={compact ? "text-xs" : "text-sm"}>Agregar</span>
@@ -542,10 +564,11 @@ const QtyPill: React.FC<{
           onMinus();
         }}
         title="Quitar"
+        aria-label="Quitar"
       >
         <Minus size={compact ? 14 : 16} />
       </button>
-      <div className={`${mid} ${txt} font-black tabular-nums`}>{qty}</div>
+      <div className={`${mid} ${txt} font-black tabular-nums select-none`}>{qty}</div>
       <button
         className={`${btn} flex items-center justify-center hover:bg-white/10 active:bg-white/15`}
         onClick={(e) => {
@@ -553,6 +576,7 @@ const QtyPill: React.FC<{
           onPlus();
         }}
         title="Agregar"
+        aria-label="Agregar"
       >
         <Plus size={compact ? 14 : 16} />
       </button>
@@ -602,36 +626,50 @@ const Manual: React.FC = () => {
 
   const [valorDomicilio, setValorDomicilio] = useState(0);
 
-  // toast
+  // toast (con cleanup)
   const [toast, setToast] = useState<Toast>(null);
-  const showToast = (t: Toast) => {
-    setToast(t);
-    setTimeout(() => setToast(null), 1800);
-  };
+  const toastTimer = useRef<number | null>(null);
 
-  /** fetch menu */
-  const fetchMenu = async () => {
+  const showToast = useCallback((t: Toast) => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    setToast(t);
+    toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      if (barrioCloseTimer.current) window.clearTimeout(barrioCloseTimer.current);
+    };
+  }, []);
+
+  /** fetch menu (con AbortController) */
+  const fetchMenu = useCallback(async () => {
+    const controller = new AbortController();
     setLoadingMenu(true);
     try {
-      const res = await fetch(MENU_FULL_API);
+      const res = await fetch(MENU_FULL_API, { signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as MenuItemFull[];
       const clean = Array.isArray(data) ? data : [];
       clean.sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
       setMenuItems(clean);
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
       console.error("menu error", e);
       showToast({ type: "error", msg: "No se pudo cargar el menú." });
     } finally {
       setLoadingMenu(false);
     }
-  };
+    return () => controller.abort();
+  }, [showToast]);
 
-  /** fetch domicilios */
-  const fetchDomicilios = async () => {
+  /** fetch domicilios (con AbortController) */
+  const fetchDomicilios = useCallback(async () => {
+    const controller = new AbortController();
     setLoadingDomicilios(true);
     try {
-      const res = await fetch(DOMICILIOS_API);
+      const res = await fetch(DOMICILIOS_API, { signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as DomicilioRow[];
       const arr = Array.isArray(data) ? data : [];
@@ -640,30 +678,28 @@ const Manual: React.FC = () => {
         .map((x) => ({ barrio: String(x.barrio), precio: Number(x.precio) || 0 }));
       clean.sort((a, b) => a.barrio.localeCompare(b.barrio, "es"));
       setDomicilios(clean);
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
       console.error("domicilios error", e);
       showToast({ type: "error", msg: "No se pudieron cargar domicilios." });
     } finally {
       setLoadingDomicilios(false);
     }
-  };
+    return () => controller.abort();
+  }, [showToast]);
 
   useEffect(() => {
     fetchMenu();
-  }, []);
+  }, [fetchMenu]);
 
   // Lazy-load domicilios cuando entras a delivery
   useEffect(() => {
     if (mode === "llevar" && domicilios.length === 0 && !loadingDomicilios) {
       fetchDomicilios();
     }
-    if (mode !== "llevar") {
-      setValorDomicilio(0);
-    }
-    if (mode === "recoger") {
-      setValorDomicilio(0);
-    }
-  }, [mode]); // eslint-disable-line
+    if (mode !== "llevar") setValorDomicilio(0);
+    if (mode === "recoger") setValorDomicilio(0);
+  }, [mode, domicilios.length, loadingDomicilios, fetchDomicilios]);
 
   /** categorías */
   const allCategories = useMemo(() => {
@@ -714,7 +750,8 @@ const Manual: React.FC = () => {
     });
 
     filteredMenuItems.forEach((item) => {
-      if (!processed.has(String(item.id))) groups.push({ id: String(item.id), type: "single", title: item.nombre, items: [item] });
+      if (!processed.has(String(item.id)))
+        groups.push({ id: String(item.id), type: "single", title: item.nombre, items: [item] });
     });
 
     return groups;
@@ -746,6 +783,7 @@ const Manual: React.FC = () => {
     () => cart.reduce((acc, it) => acc + (Number(it.priceUnit) || 0) * (Number(it.quantity) || 0), 0),
     [cart]
   );
+
   const totalFinal = useMemo(
     () => totalRestaurante + (hasDelivery ? (Number(valorDomicilio) || 0) : 0),
     [totalRestaurante, valorDomicilio, hasDelivery]
@@ -760,29 +798,35 @@ const Manual: React.FC = () => {
 
   const cartCount = useMemo(() => cart.reduce((acc, it) => acc + (it.quantity || 0), 0), [cart]);
 
-  /** cart ops */
-  const addToCart = (item: MenuItemFull) => {
-    if (!item.disponible) return;
-    const id = String(item.id);
-    const baseValor = Number(item.valor) || 0;
-    const extra = item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
-    const priceUnit = baseValor + (isTakeaway ? extra : 0);
+  /** cart ops (callbacks estables) */
+  const addToCart = useCallback(
+    (item: MenuItemFull) => {
+      if (!item.disponible) return;
+      const id = String(item.id);
+      const baseValor = Number(item.valor) || 0;
+      const extra = item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
+      const priceUnit = baseValor + (isTakeaway ? extra : 0);
 
-    setCart((prev) => {
-      const exists = prev.find((x) => x.id === id);
-      if (exists) return prev.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x));
-      return [...prev, { id, name: item.nombre, quantity: 1, baseValor, extraLlevar: extra, priceUnit, notes: "" }];
-    });
-  };
+      setCart((prev) => {
+        const exists = prev.find((x) => x.id === id);
+        if (exists) return prev.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x));
+        return [...prev, { id, name: item.nombre, quantity: 1, baseValor, extraLlevar: extra, priceUnit, notes: "" }];
+      });
+    },
+    [isTakeaway]
+  );
 
-  const inc = (id: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x)));
-  const dec = (id: string) =>
-    setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity - 1 } : x)).filter((x) => x.quantity > 0));
-  const remove = (id: string) => setCart((p) => p.filter((x) => x.id !== id));
-  const setNote = (id: string, note: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, notes: note } : x)));
-  const clearAll = () => setCart([]);
+  const inc = useCallback((id: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x))), []);
+  const dec = useCallback(
+    (id: string) =>
+      setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity - 1 } : x)).filter((x) => x.quantity > 0)),
+    []
+  );
 
-  const toggleGroup = (id: string) => setExpanded((p) => ({ ...p, [id]: !(p[id] ?? true) }));
+  const remove = useCallback((id: string) => setCart((p) => p.filter((x) => x.id !== id)), []);
+  const setNote = useCallback((id: string, note: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, notes: note } : x))), []);
+  const clearAll = useCallback(() => setCart([]), []);
+  const toggleGroup = useCallback((id: string) => setExpanded((p) => ({ ...p, [id]: !(p[id] ?? true) })), []);
 
   /** barrio autocomplete */
   const barrioSuggestions = useMemo(() => {
@@ -803,21 +847,22 @@ const Manual: React.FC = () => {
     if (hasDelivery && exactMatch && (Number(valorDomicilio) || 0) !== (Number(exactMatch.precio) || 0)) {
       setValorDomicilio(Number(exactMatch.precio) || 0);
     }
-  }, [hasDelivery, exactMatch]); // eslint-disable-line
+  }, [hasDelivery, exactMatch, valorDomicilio]);
 
-  const selectBarrio = (b: string, precio: number) => {
+  const selectBarrio = useCallback((b: string, precio: number) => {
     setBarrio(b);
     setValorDomicilio(Number(precio) || 0);
     setBarrioOpen(false);
-  };
+  }, []);
 
-  const onBarrioFocus = () => {
+  const onBarrioFocus = useCallback(() => {
     if (barrioCloseTimer.current) window.clearTimeout(barrioCloseTimer.current);
     setBarrioOpen(true);
-  };
-  const onBarrioBlur = () => {
+  }, []);
+
+  const onBarrioBlur = useCallback(() => {
     barrioCloseTimer.current = window.setTimeout(() => setBarrioOpen(false), 120);
-  };
+  }, []);
 
   /** Preview detalle */
   const detallePreview = useMemo(() => {
@@ -826,7 +871,145 @@ const Manual: React.FC = () => {
     return { raw, parsed };
   }, [cart]);
 
-  /** mode control */
+  /** Dirección final (un solo campo) */
+  const buildDireccionFinal = useCallback(() => {
+    if (mode === "mesa") return mesaLugar.trim() || "MESA";
+    if (mode === "recoger") {
+      const x = recogerEn.trim();
+      return x ? `RECOGER: ${x}` : "RECOGER";
+    }
+    // llevar: "direccion exacta (barrio)"
+    const d = direccionExacta.trim();
+    const b = barrio.trim();
+    if (d && b) return `${d} (${b})`;
+    if (d) return b ? `${d} (${b})` : d;
+    if (b) return `(${b})`;
+    return "PARA LLEVAR";
+  }, [mode, mesaLugar, recogerEn, direccionExacta, barrio]);
+
+  /** save order */
+  const saveOrder = useCallback(
+    async (opts: { print: boolean }) => {
+      if (!cart.length || totalRestaurante <= 0) {
+        showToast({ type: "info", msg: "Agrega productos para guardar." });
+        return;
+      }
+
+      const numeroFinal = (numero.trim() || makeNumeroFallback()).trim();
+      const nombreFinal = nombre.trim() || "Cliente";
+      const direccionFinal = buildDireccionFinal();
+      const detalle = serializeCartToDetalle(cart);
+      const domicilio = hasDelivery ? (Number(valorDomicilio) || 0) : 0;
+
+      const payload: any = {
+        nombre: nombreFinal,
+        direccion: direccionFinal,
+        "detalle pedido": detalle,
+        valor_restaurante: totalRestaurante,
+        valor_domicilio: domicilio,
+        metodo_pago: metodoPago,
+        estado: opts.print ? "impreso" : "pidiendo",
+        numero: numeroFinal,
+      };
+
+      try {
+        const res = await fetch(MAKE_ORDER_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        showToast({ type: "success", msg: opts.print ? "Guardado e imprimiendo…" : "Pedido guardado." });
+
+        // limpiar
+        clearAll();
+        setNombre("");
+        setNumero("");
+        setMesaLugar("");
+        setBarrio("");
+        setDireccionExacta("");
+        setRecogerEn("");
+        setValorDomicilio(0);
+        setMetodoPago("efectivo");
+        setCartOpenMobile(false);
+
+        if (opts.print) {
+          await printTicket({
+            row_number: 0,
+            fecha: new Date().toISOString(),
+            nombre: nombreFinal,
+            numero: numeroFinal,
+            direccion: direccionFinal,
+            detalle_pedido: detalle,
+            valor_restaurante: totalRestaurante,
+            valor_domicilio: domicilio,
+            metodo_pago: metodoPago,
+            estado: "impreso",
+          });
+        }
+      } catch (e) {
+        console.error(e);
+        showToast({ type: "error", msg: "No se pudo guardar el pedido." });
+      }
+    },
+    [
+      cart,
+      totalRestaurante,
+      numero,
+      nombre,
+      buildDireccionFinal,
+      hasDelivery,
+      valorDomicilio,
+      metodoPago,
+      clearAll,
+      showToast,
+    ]
+  );
+
+  /** Atajos teclado (velocidad POS)
+   *  Enter: Guardar (si no estás escribiendo en input)
+   *  Shift+Enter: Imprimir
+   *  Esc: cerrar caja móvil / cerrar sugerencias barrio
+   *  Ctrl/Cmd+S: Guardar
+   *  Ctrl/Cmd+P: Imprimir (evita print del browser)
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingElement(e.target)) return;
+
+      const isMod = e.ctrlKey || e.metaKey;
+
+      if (e.key === "Escape") {
+        if (barrioOpen) setBarrioOpen(false);
+        if (cartOpenMobile) setCartOpenMobile(false);
+        return;
+      }
+
+      if (isMod && (e.key.toLowerCase() === "s")) {
+        e.preventDefault();
+        saveOrder({ print: false });
+        return;
+      }
+      if (isMod && (e.key.toLowerCase() === "p")) {
+        e.preventDefault();
+        saveOrder({ print: true });
+        return;
+      }
+
+      if (e.key === "Enter") {
+        // enter: guardar, shift+enter: imprimir
+        e.preventDefault();
+        if (e.shiftKey) saveOrder({ print: true });
+        else saveOrder({ print: false });
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [saveOrder, barrioOpen, cartOpenMobile]);
+
+  /** ===== UI bits ===== */
   const ModePill = () => (
     <div className="flex bg-slate-100 p-1 rounded-2xl w-full sm:w-auto">
       <button
@@ -834,6 +1017,7 @@ const Manual: React.FC = () => {
         className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
           mode === "mesa" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:bg-slate-200"
         }`}
+        aria-pressed={mode === "mesa"}
       >
         <Utensils size={16} /> Mesa
       </button>
@@ -842,6 +1026,7 @@ const Manual: React.FC = () => {
         className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
           mode === "llevar" ? "bg-amber-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-200"
         }`}
+        aria-pressed={mode === "llevar"}
       >
         <Package size={16} /> Domicilio
       </button>
@@ -850,13 +1035,13 @@ const Manual: React.FC = () => {
         className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
           mode === "recoger" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-slate-200"
         }`}
+        aria-pressed={mode === "recoger"}
       >
         <Store size={16} /> Recoger
       </button>
     </div>
   );
 
-  /** pago radio */
   const PayPill = () => (
     <div className="grid grid-cols-2 gap-2">
       <button
@@ -886,88 +1071,6 @@ const Manual: React.FC = () => {
     </div>
   );
 
-  /** Dirección final (un solo campo) */
-  const buildDireccionFinal = () => {
-    if (mode === "mesa") return mesaLugar.trim() || "MESA";
-    if (mode === "recoger") {
-      const x = recogerEn.trim();
-      return x ? `RECOGER: ${x}` : "RECOGER";
-    }
-    // llevar: "direccion exacta (barrio)"
-    const d = direccionExacta.trim();
-    const b = barrio.trim();
-    if (d && b) return `${d} (${b})`;
-    if (d) return b ? `${d} (${b})` : d;
-    if (b) return `(${b})`;
-    return "PARA LLEVAR";
-  };
-
-  /** save order */
-  const saveOrder = async (opts: { print: boolean }) => {
-    if (!cart.length || totalRestaurante <= 0) {
-      showToast({ type: "info", msg: "Agrega productos para guardar." });
-      return;
-    }
-
-    const numeroFinal = (numero.trim() || makeNumeroFallback()).trim();
-    const nombreFinal = nombre.trim() || "Cliente";
-    const direccionFinal = buildDireccionFinal();
-    const detalle = serializeCartToDetalle(cart);
-    const domicilio = hasDelivery ? (Number(valorDomicilio) || 0) : 0;
-
-    const payload: any = {
-      nombre: nombreFinal,
-      direccion: direccionFinal,
-      "detalle pedido": detalle,
-      valor_restaurante: totalRestaurante,
-      valor_domicilio: domicilio,
-      metodo_pago: metodoPago,
-      estado: opts.print ? "impreso" : "pidiendo",
-      numero: numeroFinal,
-    };
-
-    try {
-      const res = await fetch(MAKE_ORDER_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      showToast({ type: "success", msg: opts.print ? "Guardado e imprimiendo…" : "Pedido guardado." });
-
-      // limpiar
-      clearAll();
-      setNombre("");
-      setNumero("");
-      setMesaLugar("");
-      setBarrio("");
-      setDireccionExacta("");
-      setRecogerEn("");
-      setValorDomicilio(0);
-      setMetodoPago("efectivo");
-      setCartOpenMobile(false);
-
-      if (opts.print) {
-        await printTicket({
-          row_number: 0,
-          fecha: new Date().toISOString(),
-          nombre: nombreFinal,
-          numero: numeroFinal,
-          direccion: direccionFinal,
-          detalle_pedido: detalle,
-          valor_restaurante: totalRestaurante,
-          valor_domicilio: domicilio,
-          metodo_pago: metodoPago,
-          estado: "impreso",
-        });
-      }
-    } catch (e) {
-      console.error(e);
-      showToast({ type: "error", msg: "No se pudo guardar el pedido." });
-    }
-  };
-
   return (
     <div className="relative bg-slate-50">
       {/* TOAST */}
@@ -981,10 +1084,10 @@ const Manual: React.FC = () => {
 
       {/* HEADER (sticky) */}
       <div className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
-        <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-3">
-          <div className="flex flex-col lg:flex-row gap-3 justify-between lg:items-center">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-3 [@media(max-height:820px)]:py-2">
+          <div className="flex flex-col lg:flex-row gap-3 [@media(max-height:820px)]:gap-2 justify-between lg:items-center">
             {/* left: title + search */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-center w-full">
+            <div className="flex flex-col sm:flex-row gap-3 [@media(max-height:820px)]:gap-2 sm:items-center w-full">
               <div className="flex items-center gap-2 shrink-0">
                 <div className="w-9 h-9 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center">
                   <Sparkles size={18} className="text-amber-700" />
@@ -992,7 +1095,7 @@ const Manual: React.FC = () => {
                 <div>
                   <div className="font-black text-slate-900 leading-tight">Pedido Manual</div>
                   <div className="text-[11px] text-slate-500 leading-tight">
-                    + muestra cantidad • - para corregir
+                    Atajos: Enter=Guardar • Shift+Enter=Imprimir • Ctrl+S / Ctrl+P
                   </div>
                 </div>
               </div>
@@ -1004,13 +1107,13 @@ const Manual: React.FC = () => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Buscar (almuerzo, piquete, sopa, mojarra...)"
-                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-amber-500/40 outline-none text-sm"
+                    className="w-full pl-9 pr-4 py-2.5 [@media(max-height:820px)]:py-2 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-amber-500/40 outline-none text-sm"
                   />
                 </div>
 
                 <button
                   onClick={fetchMenu}
-                  className={`p-2.5 bg-slate-50 hover:bg-slate-100 rounded-2xl text-slate-700 border border-slate-200 ${
+                  className={`p-2.5 [@media(max-height:820px)]:p-2 bg-slate-50 hover:bg-slate-100 rounded-2xl text-slate-700 border border-slate-200 ${
                     loadingMenu ? "animate-spin" : ""
                   }`}
                   title="Recargar menú"
@@ -1029,15 +1132,13 @@ const Manual: React.FC = () => {
                 className="lg:hidden shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold"
               >
                 <ShoppingBag size={18} />
-                <span className="text-sm">
-                  Caja{cartCount > 0 ? ` (${cartCount})` : ""}
-                </span>
+                <span className="text-sm">Caja{cartCount > 0 ? ` (${cartCount})` : ""}</span>
               </button>
             </div>
           </div>
 
           {/* categorías (chips) */}
-          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="mt-3 [@media(max-height:820px)]:mt-2 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
             <div className="flex items-center gap-2 text-slate-600 shrink-0">
               <Filter size={14} />
               <span className="text-[11px] font-extrabold">Categorías</span>
@@ -1061,8 +1162,8 @@ const Manual: React.FC = () => {
       </div>
 
       {/* MAIN */}
-      <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-4">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-4 lg:gap-6">
+      <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-4 [@media(max-height:820px)]:py-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-4 lg:gap-6 [@media(max-height:820px)]:lg:gap-4">
           {/* MENU */}
           <section className="min-w-0">
             {loadingMenu ? (
@@ -1075,7 +1176,7 @@ const Manual: React.FC = () => {
                 No hay resultados con esos filtros.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 [@media(max-height:820px)]:gap-2">
                 {groupedMenu.map((group) => {
                   // PIQUETES
                   if (group.type === "piquete") {
@@ -1084,12 +1185,11 @@ const Manual: React.FC = () => {
                         key={group.id}
                         className="bg-white rounded-3xl border border-amber-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
                       >
-                        <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-white border-b border-amber-100">
+                        <div className="px-4 py-3 [@media(max-height:820px)]:py-2 bg-gradient-to-r from-amber-50 to-white border-b border-amber-100">
                           <h3 className="font-extrabold text-slate-900 text-sm leading-tight">{group.title}</h3>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Usa + / - para ajustar</p>
                         </div>
 
-                        <div className="p-3 grid grid-cols-2 gap-2">
+                        <div className="p-3 [@media(max-height:820px)]:p-2 grid grid-cols-2 gap-2">
                           {group.items.map((item) => {
                             const unit = computeUnitPrice(item, isTakeaway);
                             const disabled = !item.disponible;
@@ -1101,7 +1201,7 @@ const Manual: React.FC = () => {
                                 key={id}
                                 onClick={() => addToCart(item)}
                                 disabled={disabled}
-                                className={`rounded-3xl border px-3 py-3 text-left active:scale-[0.98] transition-all ${
+                                className={`rounded-3xl border px-3 py-3 [@media(max-height:820px)]:py-2 text-left active:scale-[0.98] transition-all ${
                                   disabled
                                     ? "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
                                     : "bg-white border-slate-200 hover:border-amber-400 hover:bg-amber-50"
@@ -1117,7 +1217,7 @@ const Manual: React.FC = () => {
                                   </div>
                                 )}
 
-                                <div className="mt-2">
+                                <div className="mt-2 [@media(max-height:820px)]:mt-1.5">
                                   <QtyPill
                                     qty={qty}
                                     disabled={disabled}
@@ -1144,7 +1244,7 @@ const Manual: React.FC = () => {
                       >
                         <button
                           onClick={() => toggleGroup(group.id)}
-                          className="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+                          className="w-full flex justify-between items-center px-4 py-3 [@media(max-height:820px)]:py-2 bg-slate-50 hover:bg-slate-100 transition-colors"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="bg-white border border-slate-200 text-slate-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
@@ -1160,7 +1260,7 @@ const Manual: React.FC = () => {
                         </button>
 
                         {isOpen && (
-                          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                          <div className="p-3 [@media(max-height:820px)]:p-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
                             {group.items.map((item) => {
                               const unit = computeUnitPrice(item, isTakeaway);
                               const disabled = !item.disponible;
@@ -1172,7 +1272,7 @@ const Manual: React.FC = () => {
                                   key={id}
                                   onClick={() => addToCart(item)}
                                   disabled={disabled}
-                                  className={`rounded-3xl border px-3 py-3 active:scale-[0.98] transition-all text-left ${
+                                  className={`rounded-3xl border px-3 py-3 [@media(max-height:820px)]:py-2 active:scale-[0.98] transition-all text-left ${
                                     disabled
                                       ? "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
                                       : "bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50/40"
@@ -1191,7 +1291,6 @@ const Manual: React.FC = () => {
                                       )}
                                     </div>
 
-                                    {/* control qty */}
                                     <div className="shrink-0">
                                       <QtyPill
                                         qty={qty}
@@ -1223,7 +1322,7 @@ const Manual: React.FC = () => {
                       key={group.id}
                       onClick={() => addToCart(item)}
                       disabled={disabled}
-                      className={`bg-white rounded-3xl border shadow-sm p-4 text-left active:scale-[0.99] transition-all ${
+                      className={`bg-white rounded-3xl border shadow-sm p-4 [@media(max-height:820px)]:p-3 text-left active:scale-[0.99] transition-all ${
                         disabled
                           ? "border-slate-200 text-slate-300 cursor-not-allowed bg-slate-50"
                           : "border-slate-200 hover:border-amber-300 hover:shadow-md"
@@ -1250,7 +1349,7 @@ const Manual: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="mt-3 flex items-end justify-between border-t border-slate-100 pt-3">
+                      <div className="mt-3 [@media(max-height:820px)]:mt-2 flex items-end justify-between border-t border-slate-100 pt-3 [@media(max-height:820px)]:pt-2">
                         <div>
                           <div className="text-xs text-slate-500 font-semibold">Precio</div>
                           <div className="text-lg font-black text-slate-900">{formatPrice(unit)}</div>
@@ -1266,18 +1365,26 @@ const Manual: React.FC = () => {
           </section>
 
           {/* CART (desktop/tablet) */}
-          <aside className="hidden lg:flex bg-white border border-slate-200 rounded-3xl overflow-hidden flex-col min-h-[calc(100vh-140px)] sticky top-[100px]">
+          <aside
+            className="
+              hidden lg:flex bg-white border border-slate-200 rounded-3xl overflow-hidden flex-col
+              sticky top-[100px] min-h-[calc(100vh-140px)]
+              [@media(max-height:820px)]:top-[84px]
+              [@media(max-height:820px)]:min-h-[calc(100vh-120px)]
+            "
+          >
             {/* header */}
-            <div className="p-4 border-b border-slate-200">
+            <div className="p-4 [@media(max-height:820px)]:p-3 border-b border-slate-200">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${mode === "llevar" ? "bg-amber-500" : mode === "recoger" ? "bg-slate-900" : "bg-emerald-500"}`} />
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        mode === "llevar" ? "bg-amber-500" : mode === "recoger" ? "bg-slate-900" : "bg-emerald-500"
+                      }`}
+                    />
                     <h2 className="font-extrabold text-slate-900">Caja</h2>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    {mode === "mesa" ? "Mesa: valor base." : mode === "recoger" ? "Recoger: domicilio 0 (suma icopor si aplica)." : "Domicilio: barrio + dirección (auto precio)."}
-                  </p>
                 </div>
 
                 {cartCount > 0 && (
@@ -1288,7 +1395,7 @@ const Manual: React.FC = () => {
               </div>
 
               {/* acciones arriba (sin scroll) */}
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="mt-3 [@media(max-height:820px)]:mt-2 grid grid-cols-3 gap-2">
                 <button
                   onClick={clearAll}
                   className="py-2.5 rounded-2xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
@@ -1300,6 +1407,7 @@ const Manual: React.FC = () => {
                 <button
                   onClick={() => saveOrder({ print: false })}
                   className="py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
+                  title="Guardar (Enter / Ctrl+S)"
                 >
                   <Save size={18} /> Guardar
                 </button>
@@ -1307,14 +1415,14 @@ const Manual: React.FC = () => {
                 <button
                   onClick={() => saveOrder({ print: true })}
                   className="py-2.5 rounded-2xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
-                  title="Guardar e imprimir"
+                  title="Guardar e imprimir (Shift+Enter / Ctrl+P)"
                 >
                   <Printer size={18} /> Imprimir
                 </button>
               </div>
 
               {/* totales arriba también */}
-              <div className="mt-3 bg-slate-50 border border-slate-200 rounded-2xl p-3">
+              <div className="mt-3 [@media(max-height:820px)]:mt-2 bg-slate-50 border border-slate-200 rounded-2xl p-3 [@media(max-height:820px)]:p-2.5">
                 <div className="flex justify-between items-center">
                   <div>
                     <div className="text-[11px] text-slate-500 font-semibold">Restaurante</div>
@@ -1334,7 +1442,7 @@ const Manual: React.FC = () => {
               </div>
 
               {/* datos */}
-              <div className="mt-4 grid gap-2">
+              <div className="mt-4 [@media(max-height:820px)]:mt-3 grid gap-2">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
                     <User size={14} className="text-slate-400 mr-2" />
@@ -1478,7 +1586,7 @@ const Manual: React.FC = () => {
             </div>
 
             {/* items */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50 [@media(max-height:820px)]:p-2 [@media(max-height:820px)]:space-y-1.5">
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
                   <ShoppingBag size={32} />
@@ -1488,7 +1596,7 @@ const Manual: React.FC = () => {
               ) : (
                 <>
                   {cart.map((item) => (
-                    <div key={item.id} className="bg-white rounded-3xl border border-slate-200 p-3 shadow-sm">
+                    <div key={item.id} className="bg-white rounded-3xl border border-slate-200 p-3 [@media(max-height:820px)]:p-2.5 shadow-sm">
                       <div className="flex justify-between items-start gap-2">
                         <div className="min-w-0">
                           <p className="font-extrabold text-slate-900 text-sm break-words leading-tight">{item.name}</p>
@@ -1510,18 +1618,20 @@ const Manual: React.FC = () => {
                         </button>
                       </div>
 
-                      <div className="mt-3 flex justify-between items-center">
+                      <div className="mt-3 [@media(max-height:820px)]:mt-2.5 flex justify-between items-center">
                         <div className="flex items-center bg-slate-100 rounded-2xl h-10 border border-slate-200 overflow-hidden">
                           <button
                             onClick={() => dec(item.id)}
                             className="w-11 h-full flex items-center justify-center hover:bg-slate-200 text-slate-700"
+                            aria-label="Disminuir"
                           >
                             <Minus size={14} />
                           </button>
-                          <span className="w-10 text-center font-black text-sm text-slate-900">{item.quantity}</span>
+                          <span className="w-10 text-center font-black text-sm text-slate-900 select-none">{item.quantity}</span>
                           <button
                             onClick={() => inc(item.id)}
                             className="w-11 h-full flex items-center justify-center hover:bg-slate-200 text-slate-700"
+                            aria-label="Aumentar"
                           >
                             <Plus size={14} />
                           </button>
@@ -1533,7 +1643,7 @@ const Manual: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="mt-3 relative">
+                      <div className="mt-3 [@media(max-height:820px)]:mt-2.5 relative">
                         <MessageSquare size={14} className="absolute left-3 top-3 text-slate-400" />
                         <input
                           value={item.notes}
@@ -1552,7 +1662,11 @@ const Manual: React.FC = () => {
                       className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
                     >
                       <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
-                      {detalleOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+                      {detalleOpen ? (
+                        <ChevronUp size={16} className="text-slate-500" />
+                      ) : (
+                        <ChevronDown size={16} className="text-slate-500" />
+                      )}
                     </button>
                     {detalleOpen && (
                       <div className="p-3">
@@ -1580,9 +1694,7 @@ const Manual: React.FC = () => {
               <div className="flex items-center gap-2">
                 <ShoppingBag size={18} />
                 <span>Ver caja</span>
-                {cartCount > 0 && (
-                  <span className="ml-1 text-[11px] bg-white/15 px-2 py-0.5 rounded-full">{cartCount}</span>
-                )}
+                {cartCount > 0 && <span className="ml-1 text-[11px] bg-white/15 px-2 py-0.5 rounded-full">{cartCount}</span>}
               </div>
               <div className="text-sm">{formatPrice(totalFinal)}</div>
             </button>
@@ -1591,19 +1703,13 @@ const Manual: React.FC = () => {
 
         {cartOpenMobile && (
           <div className="fixed inset-0 z-[80]">
-            <button
-              onClick={() => setCartOpenMobile(false)}
-              className="absolute inset-0 bg-black/35"
-              aria-label="Cerrar"
-            />
+            <button onClick={() => setCartOpenMobile(false)} className="absolute inset-0 bg-black/35" aria-label="Cerrar" />
             <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[28px] border-t border-slate-200 shadow-2xl max-h-[88vh] flex flex-col">
               <div className="px-4 pt-4 pb-3 border-b border-slate-200">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="font-black text-slate-900">Caja</div>
-                    <div className="text-[11px] text-slate-500">
-                      Botones arriba • Ajusta con +/-
-                    </div>
+                    <div className="text-[11px] text-slate-500">Botones arriba • Ajusta con +/- • Esc para cerrar</div>
                   </div>
                   <button
                     onClick={() => setCartOpenMobile(false)}
@@ -1677,9 +1783,7 @@ const Manual: React.FC = () => {
                             <p className="text-[11px] text-slate-500 mt-1">
                               {formatPrice(item.priceUnit)} c/u
                               {isTakeaway && item.extraLlevar > 0 && (
-                                <span className="ml-2 text-amber-700 font-extrabold">
-                                  (+{formatPrice(item.extraLlevar)} icopor)
-                                </span>
+                                <span className="ml-2 text-amber-700 font-extrabold">(+{formatPrice(item.extraLlevar)} icopor)</span>
                               )}
                             </p>
                           </div>
@@ -1733,7 +1837,11 @@ const Manual: React.FC = () => {
                         className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
                       >
                         <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
-                        {detalleOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+                        {detalleOpen ? (
+                          <ChevronUp size={16} className="text-slate-500" />
+                        ) : (
+                          <ChevronDown size={16} className="text-slate-500" />
+                        )}
                       </button>
                       {detalleOpen && (
                         <div className="p-3">
