@@ -20,7 +20,7 @@ export interface Order {
   row_number: number;
   fecha: string;
   nombre?: string;
-  numero: string;
+  numero?: string | number;
   direccion: string;
   "detalle pedido": string;
   valor_restaurante: number;
@@ -45,7 +45,19 @@ export type CartItem = {
 
 /** HELPERS UI */
 const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
-const cleanPhone = (raw: string) => raw.replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
+
+const cleanPhone = (raw: unknown) => {
+  // si llega número (3175816062) o algo raro, lo volvemos string sí o sí
+  const v =
+    raw && typeof raw === "object"
+      ? (raw as any).numero ?? (raw as any).value ?? (raw as any).phone ?? ""
+      : raw;
+
+  const s = String(v ?? "");
+  return s
+    .replace(/@s\.whatsapp\.net$/i, "")
+    .replace(/[^0-9+]/g, "");
+};
 
 const allowedStatuses = [
   'pidiendo', 'confirmado', 'impreso', 'preparando', 'en camino', 'entregado',
@@ -146,7 +158,7 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
   addItemToCart, decreaseItem,
   onCancelEdit, onSaveEdit, onStartEdit, onPrint, onStatusChange
 }) => {
-  const phone = cleanPhone(order.numero);
+  const phone = cleanPhone(order?.numero ?? "");
   const ui = getStatusUI(order.estado);
   const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
   

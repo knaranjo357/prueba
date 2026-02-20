@@ -20,7 +20,8 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  ReceiptText,
+  ShoppingBag,
+  Sparkles,
 } from "lucide-react";
 
 import { formatPrice } from "../utils/dateUtils"; // ajusta si tu ruta es distinta
@@ -28,7 +29,6 @@ import { formatPrice } from "../utils/dateUtils"; // ajusta si tu ruta es distin
 /** ENDPOINTS */
 const MENU_FULL_API = "https://n8n.alliasoft.com/webhook/luis-res/menu-completo";
 const MAKE_ORDER_API = "https://n8n.alliasoft.com/webhook/luis-res/hacer-pedido";
-const MANUAL_ORDERS_API = "https://n8n.alliasoft.com/webhook/luisres/pedidos/manual";
 
 /** TIPOS */
 type MenuItemFull = {
@@ -48,15 +48,15 @@ type CartItem = {
   id: string;
   name: string;
   quantity: number;
-  baseValor: number; // valor base (mesa)
-  extraLlevar: number; // adicional llevar (si aplica)
-  priceUnit: number; // base + (isTakeaway? extra : 0)
+  baseValor: number;
+  extraLlevar: number;
+  priceUnit: number;
   notes: string;
 };
 
 type ManualOrder = {
   row_number: number;
-  fecha: string; // "2025-11-20 18:59:00"
+  fecha: string;
   nombre: string;
   numero: string;
   direccion: string;
@@ -86,14 +86,12 @@ const normalizeNote = (s: string) => {
 
 const computeUnitPrice = (item: MenuItemFull, isTakeaway: boolean) => {
   const base = Number(item.valor) || 0;
-  const extra =
-    isTakeaway && item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
+  const extra = isTakeaway && item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
   return base + extra;
 };
 
-const groupBaseNameForPiquete = (name: string) => {
-  return (name || "").replace(/(\d{2,3}[.,]?\d{3})|\d{4,}$/g, "").trim();
-};
+const groupBaseNameForPiquete = (name: string) =>
+  (name || "").replace(/(\d{2,3}[.,]?\d{3})|\d{4,}$/g, "").trim();
 
 const splitOutsideParens = (s: string, separators = [";"]) => {
   const sepSet = new Set(separators);
@@ -109,9 +107,7 @@ const splitOutsideParens = (s: string, separators = [";"]) => {
     if (depth === 0 && sepSet.has(ch)) {
       if (buf.trim()) out.push(buf.trim());
       buf = "";
-    } else {
-      buf += ch;
-    }
+    } else buf += ch;
   }
   if (buf.trim()) out.push(buf.trim());
   return out;
@@ -121,9 +117,7 @@ const splitByCommaOutsideParens = (s: string) => splitOutsideParens(s, [","]);
 
 const parseDetailsForView = (raw: string) => {
   if (!raw) return [];
-  const itemStrings = splitOutsideParens(raw, [";", "|"])
-    .map((x) => x.trim())
-    .filter(Boolean);
+  const itemStrings = splitOutsideParens(raw, [";", "|"]).map((x) => x.trim()).filter(Boolean);
 
   return itemStrings.map((itemStr) => {
     const parts = splitByCommaOutsideParens(itemStr).map((x) => x.trim());
@@ -150,8 +144,8 @@ const parseDetailsForView = (raw: string) => {
 };
 
 /** Serializa EXACTO: "- qty,nombre (nota) ,totalLinea;" */
-const serializeCartToDetalle = (items: CartItem[]) => {
-  return items
+const serializeCartToDetalle = (items: CartItem[]) =>
+  items
     .map((i) => {
       const note = normalizeNote(i.notes);
       const nameWithNote = note ? `${i.name} (${note})` : i.name;
@@ -159,7 +153,6 @@ const serializeCartToDetalle = (items: CartItem[]) => {
       return `- ${i.quantity},${nameWithNote} ,${lineTotal};`;
     })
     .join("\n");
-};
 
 /** ===== ticket helpers (mismos de antes) ===== */
 const COLS = 42;
@@ -222,9 +215,7 @@ const parseMoneyToInt = (s: string | number): number => {
 
 const parseDetailsForPrint = (raw: string) => {
   if (!raw) return [];
-  const itemStrings = splitOutsideParens(raw, [";", "|"])
-    .map((x) => x.trim())
-    .filter(Boolean);
+  const itemStrings = splitOutsideParens(raw, [";", "|"]).map((x) => x.trim()).filter(Boolean);
 
   return itemStrings.map((itemStr) => {
     const parts = splitByCommaOutsideParens(itemStr).map((x) => x.trim());
@@ -279,7 +270,14 @@ const cp1252Map: Record<string, number> = {
   "“": 0x93, "”": 0x94, "‘": 0x91, "’": 0x92, "—": 0x97, "–": 0x96, "…": 0x85,
 };
 const asciiFallback: Record<string, string> = {
-  "“": '"', "”": '"', "‘": "'", "’": "'", "—": "-", "–": "-", "…": "...", "€": "EUR",
+  "“": '"',
+  "”": '"',
+  "‘": "'",
+  "’": "'",
+  "—": "-",
+  "–": "-",
+  "…": "...",
+  "€": "EUR",
 };
 const encodeCP1252 = (str: string): number[] => {
   const bytes: number[] = [];
@@ -377,7 +375,6 @@ const printTicket = async (order: ManualOrder) => {
     return;
   }
 
-  // Desktop print simple (igual al anterior, simplificado)
   const esc = (s: string) =>
     (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -443,12 +440,11 @@ const toastStyle = (t: Toast) => {
   if (!t) return "";
   if (t.type === "success") return "bg-emerald-600";
   if (t.type === "error") return "bg-rose-600";
-  return "bg-slate-800";
+  return "bg-slate-900";
 };
 
 /** ===== COMPONENTE ===== */
 const Manual: React.FC = () => {
-  // modo
   const [isTakeaway, setIsTakeaway] = useState(false);
 
   // menu
@@ -462,20 +458,16 @@ const Manual: React.FC = () => {
 
   // carrito
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartOpenMobile, setCartOpenMobile] = useState(false);
+  const [detalleOpen, setDetalleOpen] = useState(false);
 
-  // datos pedido (NO obligatorios)
+  // datos pedido (opcionales)
   const [nombre, setNombre] = useState("");
   const [numero, setNumero] = useState("");
   const [direccion, setDireccion] = useState("");
   const [valorDomicilio, setValorDomicilio] = useState(0);
   const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia">("efectivo");
   const [estado, setEstado] = useState<"pidiendo" | "impreso">("pidiendo");
-
-  // pedidos drawer
-  const [ordersOpen, setOrdersOpen] = useState(false);
-  const [manualOrders, setManualOrders] = useState<ManualOrder[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(false);
-  const [ordersSearch, setOrdersSearch] = useState("");
 
   // toast
   const [toast, setToast] = useState<Toast>(null);
@@ -502,27 +494,8 @@ const Manual: React.FC = () => {
     }
   };
 
-  /** fetch orders */
-  const fetchManualOrders = async () => {
-    setLoadingOrders(true);
-    try {
-      const res = await fetch(MANUAL_ORDERS_API);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as ManualOrder[];
-      const arr = Array.isArray(data) ? data : [];
-      arr.sort((a, b) => (b.row_number ?? 0) - (a.row_number ?? 0));
-      setManualOrders(arr);
-    } catch (e) {
-      console.error("orders error", e);
-      showToast({ type: "error", msg: "No se pudieron cargar pedidos." });
-    } finally {
-      setLoadingOrders(false);
-    }
-  };
-
   useEffect(() => {
     fetchMenu();
-    // NO abrimos pedidos por defecto
   }, []);
 
   /** categorías */
@@ -537,8 +510,7 @@ const Manual: React.FC = () => {
     const term = searchTerm.trim().toLowerCase();
     return menuItems.filter((item) => {
       const inSearch = !term || (item.nombre || "").toLowerCase().includes(term);
-      const inCat =
-        selectedCategory === "Todas" || (item.categorias || []).includes(selectedCategory);
+      const inCat = selectedCategory === "Todas" || (item.categorias || []).includes(selectedCategory);
       return inSearch && inCat;
     });
   }, [menuItems, searchTerm, selectedCategory]);
@@ -551,16 +523,9 @@ const Manual: React.FC = () => {
     const groups: MenuGroup[] = [];
     const processed = new Set<string>();
 
-    const almuerzos = filteredMenuItems.filter((i) =>
-      (i.nombre || "").toLowerCase().startsWith("almuerzo")
-    );
+    const almuerzos = filteredMenuItems.filter((i) => (i.nombre || "").toLowerCase().startsWith("almuerzo"));
     if (almuerzos.length) {
-      groups.push({
-        id: "grp-almuerzos",
-        type: "almuerzo",
-        title: "Almuerzos del Día",
-        items: almuerzos,
-      });
+      groups.push({ id: "grp-almuerzos", type: "almuerzo", title: "Almuerzos del Día", items: almuerzos });
       almuerzos.forEach((i) => processed.add(String(i.id)));
     }
 
@@ -582,9 +547,7 @@ const Manual: React.FC = () => {
     });
 
     filteredMenuItems.forEach((item) => {
-      if (!processed.has(String(item.id))) {
-        groups.push({ id: String(item.id), type: "single", title: item.nombre, items: [item] });
-      }
+      if (!processed.has(String(item.id))) groups.push({ id: String(item.id), type: "single", title: item.nombre, items: [item] });
     });
 
     return groups;
@@ -612,13 +575,14 @@ const Manual: React.FC = () => {
   }, [isTakeaway, menuById]);
 
   /** totals */
-  const totalRestaurante = useMemo(() => {
-    return cart.reduce((acc, it) => acc + (Number(it.priceUnit) || 0) * (Number(it.quantity) || 0), 0);
-  }, [cart]);
-
-  const totalFinal = useMemo(() => {
-    return totalRestaurante + (isTakeaway ? (Number(valorDomicilio) || 0) : 0);
-  }, [totalRestaurante, valorDomicilio, isTakeaway]);
+  const totalRestaurante = useMemo(
+    () => cart.reduce((acc, it) => acc + (Number(it.priceUnit) || 0) * (Number(it.quantity) || 0), 0),
+    [cart]
+  );
+  const totalFinal = useMemo(
+    () => totalRestaurante + (isTakeaway ? (Number(valorDomicilio) || 0) : 0),
+    [totalRestaurante, valorDomicilio, isTakeaway]
+  );
 
   /** cart ops */
   const addToCart = (item: MenuItemFull) => {
@@ -644,13 +608,6 @@ const Manual: React.FC = () => {
 
   const toggleGroup = (id: string) => setExpanded((p) => ({ ...p, [id]: !(p[id] ?? true) }));
 
-  /** open orders drawer */
-  const openOrders = async () => {
-    setOrdersOpen(true);
-    // lazy load cuando abre
-    if (!manualOrders.length) await fetchManualOrders();
-  };
-
   /** save order: SOLO exige que haya detalle (items) */
   const saveOrder = async (opts: { print: boolean }) => {
     if (!cart.length || totalRestaurante <= 0) {
@@ -672,7 +629,6 @@ const Manual: React.FC = () => {
       valor_domicilio: domicilio,
       metodo_pago: metodoPago,
       estado: opts.print ? "impreso" : estado,
-      // extra (si tu n8n lo usa, perfecto; si no, normalmente no molesta)
       numero: numeroFinal,
     };
 
@@ -694,34 +650,22 @@ const Manual: React.FC = () => {
       setValorDomicilio(0);
       setMetodoPago("efectivo");
       setEstado("pidiendo");
-
-      // refrescar list (si está abierto, actualiza; si no, lo dejamos quieto)
-      if (ordersOpen) await fetchManualOrders();
+      setCartOpenMobile(false);
 
       if (opts.print) {
-        // tomamos el más reciente por row_number
-        try {
-          const rr = await fetch(MANUAL_ORDERS_API);
-          const dd = (await rr.json()) as ManualOrder[];
-          const arr = Array.isArray(dd) ? dd : [];
-          arr.sort((a, b) => (b.row_number ?? 0) - (a.row_number ?? 0));
-          const latest = arr[0];
-          if (latest) await printTicket(latest);
-        } catch {
-          // fallback mínimo
-          await printTicket({
-            row_number: 0,
-            fecha: new Date().toISOString(),
-            nombre: nombreFinal,
-            numero: numeroFinal,
-            direccion: direccionFinal,
-            detalle_pedido: detalle,
-            valor_restaurante: totalRestaurante,
-            valor_domicilio: domicilio,
-            metodo_pago: metodoPago,
-            estado: "impreso",
-          });
-        }
+        // fallback: imprimimos con lo que tenemos (sin GET de pedidos)
+        await printTicket({
+          row_number: 0,
+          fecha: new Date().toISOString(),
+          nombre: nombreFinal,
+          numero: numeroFinal,
+          direccion: direccionFinal,
+          detalle_pedido: detalle,
+          valor_restaurante: totalRestaurante,
+          valor_domicilio: domicilio,
+          metodo_pago: metodoPago,
+          estado: "impreso",
+        });
       }
     } catch (e) {
       console.error(e);
@@ -729,27 +673,41 @@ const Manual: React.FC = () => {
     }
   };
 
-  /** drawer filter */
-  const filteredOrders = useMemo(() => {
-    const term = ordersSearch.trim().toLowerCase();
-    if (!term) return manualOrders;
-    return manualOrders.filter((o) => {
-      const a = (o.nombre || "").toLowerCase();
-      const b = (o.direccion || "").toLowerCase();
-      const c = String(o.numero || "").toLowerCase();
-      return a.includes(term) || b.includes(term) || c.includes(term);
-    });
-  }, [manualOrders, ordersSearch]);
-
-  /** Preview detalle (UX: ayuda a confiar) */
+  /** Preview detalle */
   const detallePreview = useMemo(() => {
     const raw = serializeCartToDetalle(cart);
     const parsed = parseDetailsForView(raw);
     return { raw, parsed };
   }, [cart]);
 
+  /** UX: conteo total items */
+  const cartCount = useMemo(() => cart.reduce((acc, it) => acc + (it.quantity || 0), 0), [cart]);
+
+  /** ===== UI helpers ===== */
+  const ModePill = () => (
+    <div className="flex bg-slate-100 p-1 rounded-2xl w-full sm:w-auto">
+      <button
+        onClick={() => setIsTakeaway(false)}
+        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
+          !isTakeaway ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:bg-slate-200"
+        }`}
+      >
+        <Utensils size={16} /> Mesa
+      </button>
+      <button
+        onClick={() => setIsTakeaway(true)}
+        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
+          isTakeaway ? "bg-amber-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-200"
+        }`}
+      >
+        <Package size={16} /> Llevar
+      </button>
+    </div>
+  );
+
+  /** ===== layout ===== */
   return (
-    <div className="relative flex h-[calc(100vh-60px)] bg-slate-50 overflow-hidden">
+    <div className="relative bg-slate-50">
       {/* TOAST */}
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[90]">
@@ -759,110 +717,72 @@ const Manual: React.FC = () => {
         </div>
       )}
 
-      {/* Sidebar categorías (desktop) */}
-      <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-200 shrink-0">
-        <div className="p-4 border-b border-slate-100">
-          <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-slate-900 flex items-center gap-2">
-              <Filter size={18} className="text-amber-600" /> Categorías
-            </h3>
-            <button
-              onClick={fetchMenu}
-              className={`p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 ${loadingMenu ? "animate-spin" : ""}`}
-              title="Recargar menú"
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-2">
-            Tip: usa el buscador y toca los productos para agregarlos.
-          </p>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {allCategories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center justify-between ${
-                selectedCategory === cat
-                  ? "bg-amber-50 text-amber-900 ring-1 ring-amber-200"
-                  : "text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <span className="truncate">{cat}</span>
-              {selectedCategory === cat && <span className="w-2 h-2 rounded-full bg-amber-500" />}
-            </button>
-          ))}
-        </div>
-
-        <div className="p-3 border-t border-slate-100">
-          <button
-            onClick={openOrders}
-            className="w-full px-3 py-2.5 rounded-xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 flex items-center justify-center gap-2"
-          >
-            <ReceiptText size={16} /> Pedidos
-          </button>
-        </div>
-      </aside>
-
-      {/* Centro: menú */}
-      <section className="flex-1 flex flex-col min-w-0 border-r border-slate-200">
-        {/* Header suave */}
-        <div className="bg-white p-3 border-b border-slate-200 shrink-0">
-          <div className="flex flex-col xl:flex-row gap-3 justify-between items-center">
-            {/* buscador */}
-            <div className="flex items-center gap-2 w-full xl:w-2/3">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Buscar (almuerzo, piquete, sopa, mojarra...)"
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/40 outline-none text-sm"
-                />
+      {/* HEADER (sticky) */}
+      <div className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-3">
+          <div className="flex flex-col lg:flex-row gap-3 justify-between lg:items-center">
+            {/* left: title + search */}
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center w-full">
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="w-9 h-9 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center">
+                  <Sparkles size={18} className="text-amber-700" />
+                </div>
+                <div>
+                  <div className="font-black text-slate-900 leading-tight">Pedido Manual</div>
+                  <div className="text-[11px] text-slate-500 leading-tight">
+                    Toca productos para agregarlos rápido
+                  </div>
+                </div>
               </div>
 
-              <button
-                onClick={openOrders}
-                className="lg:hidden px-3 py-2.5 rounded-xl bg-slate-900 text-white font-extrabold flex items-center gap-2"
-                title="Pedidos"
-              >
-                <ReceiptText size={16} /> Pedidos
-              </button>
+              <div className="flex items-center gap-2 w-full">
+                <div className="relative w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Buscar (almuerzo, piquete, sopa, mojarra...)"
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-amber-500/40 outline-none text-sm"
+                  />
+                </div>
 
-              <button
-                onClick={fetchMenu}
-                className={`p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 border border-slate-200 ${loadingMenu ? "animate-spin" : ""}`}
-                title="Recargar"
-              >
-                <RefreshCw size={18} />
-              </button>
+                <button
+                  onClick={fetchMenu}
+                  className={`p-2.5 bg-slate-50 hover:bg-slate-100 rounded-2xl text-slate-700 border border-slate-200 ${
+                    loadingMenu ? "animate-spin" : ""
+                  }`}
+                  title="Recargar menú"
+                >
+                  <RefreshCw size={18} />
+                </button>
+              </div>
             </div>
 
-            {/* switch mesa / llevar */}
-            <div className="flex bg-slate-100 p-1 rounded-2xl shrink-0 w-full xl:w-auto">
+            {/* right: mode + mobile cart button */}
+            <div className="flex gap-2 items-center w-full lg:w-auto">
+              <ModePill />
+
+              {/* botón móvil: abre carrito */}
               <button
-                onClick={() => setIsTakeaway(false)}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
-                  !isTakeaway ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:bg-slate-200"
-                }`}
+                onClick={() => setCartOpenMobile(true)}
+                className="lg:hidden shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold"
               >
-                <Utensils size={16} /> Mesa
-              </button>
-              <button
-                onClick={() => setIsTakeaway(true)}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-extrabold transition-all ${
-                  isTakeaway ? "bg-amber-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-200"
-                }`}
-              >
-                <Package size={16} /> Llevar
+                <ShoppingBag size={18} />
+                <span className="text-sm">
+                  Carrito
+                  {cartCount > 0 ? ` (${cartCount})` : ""}
+                </span>
               </button>
             </div>
           </div>
 
-          {/* categorías mobile */}
-          <div className="lg:hidden mt-3 overflow-x-auto pb-1 flex gap-2 scrollbar-hide">
+          {/* categorías (chips) */}
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex items-center gap-2 text-slate-600 shrink-0">
+              <Filter size={14} />
+              <span className="text-[11px] font-extrabold">Categorías</span>
+            </div>
+
             {allCategories.map((cat) => (
               <button
                 key={cat}
@@ -870,7 +790,7 @@ const Manual: React.FC = () => {
                 className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-extrabold border transition-colors ${
                   selectedCategory === cat
                     ? "bg-amber-500 text-white border-amber-600"
-                    : "bg-white text-slate-700 border-slate-200"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                 }`}
               >
                 {cat}
@@ -878,82 +798,37 @@ const Manual: React.FC = () => {
             ))}
           </div>
         </div>
+      </div>
 
-        {/* menú grid */}
-        <div className="flex-1 overflow-y-auto p-3 bg-slate-50">
-          {loadingMenu ? (
-            <div className="flex flex-col items-center justify-center h-40 text-slate-400">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mb-2" />
-              <p className="text-sm font-semibold">Cargando menú...</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {groupedMenu.map((group) => {
-                // PIQUETES
-                if (group.type === "piquete") {
-                  return (
-                    <div
-                      key={group.id}
-                      className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
-                    >
-                      <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-white border-b border-amber-100">
-                        <h3 className="font-extrabold text-slate-900 text-sm leading-tight">{group.title}</h3>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Toca el tamaño para agregar</p>
-                      </div>
-                      <div className="p-3 grid grid-cols-2 gap-2">
-                        {group.items.map((item) => {
-                          const unit = computeUnitPrice(item, isTakeaway);
-                          const disabled = !item.disponible;
-                          return (
-                            <button
-                              key={String(item.id)}
-                              onClick={() => addToCart(item)}
-                              disabled={disabled}
-                              className={`rounded-2xl border px-3 py-3 text-left active:scale-[0.98] transition-all ${
-                                disabled
-                                  ? "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
-                                  : "bg-white border-slate-200 hover:border-amber-400 hover:bg-amber-50"
-                              }`}
-                            >
-                              <div className="text-base font-black text-slate-900">
-                                {formatPrice(unit).replace(",00", "")}
-                              </div>
-                              {isTakeaway && item.para_llevar && (item.precio_adicional_llevar || 0) > 0 && (
-                                <div className="text-[10px] font-extrabold text-amber-700 mt-1">
-                                  +{formatPrice(item.precio_adicional_llevar || 0)} llevar
-                                </div>
-                              )}
-                              {!item.disponible && (
-                                <div className="text-[10px] font-extrabold uppercase mt-1">Agotado</div>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                }
-
-                // ALMUERZOS
-                if (group.type === "almuerzo") {
-                  const isOpen = expanded[group.id] ?? true;
-                  return (
-                    <div key={group.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm sm:col-span-2 xl:col-span-3 overflow-hidden">
-                      <button
-                        onClick={() => toggleGroup(group.id)}
-                        className="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+      {/* MAIN */}
+      <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-4 lg:gap-6">
+          {/* MENU */}
+          <section className="min-w-0">
+            {loadingMenu ? (
+              <div className="flex flex-col items-center justify-center h-40 text-slate-400 bg-white rounded-3xl border border-slate-200">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mb-2" />
+                <p className="text-sm font-semibold">Cargando menú...</p>
+              </div>
+            ) : groupedMenu.length === 0 ? (
+              <div className="text-center text-slate-500 bg-white rounded-3xl border border-slate-200 p-10">
+                No hay resultados con esos filtros.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {groupedMenu.map((group) => {
+                  // PIQUETES
+                  if (group.type === "piquete") {
+                    return (
+                      <div
+                        key={group.id}
+                        className="bg-white rounded-3xl border border-amber-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="bg-white border border-slate-200 text-slate-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                            {group.items.length}
-                          </span>
-                          <h3 className="font-extrabold text-slate-900 text-sm">{group.title}</h3>
+                        <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-white border-b border-amber-100">
+                          <h3 className="font-extrabold text-slate-900 text-sm leading-tight">{group.title}</h3>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Toca el tamaño para agregar</p>
                         </div>
-                        {isOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
-                      </button>
-
-                      {isOpen && (
-                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                        <div className="p-3 grid grid-cols-2 gap-2">
                           {group.items.map((item) => {
                             const unit = computeUnitPrice(item, isTakeaway);
                             const disabled = !item.disponible;
@@ -962,433 +837,636 @@ const Manual: React.FC = () => {
                                 key={String(item.id)}
                                 onClick={() => addToCart(item)}
                                 disabled={disabled}
-                                className={`rounded-2xl border px-3 py-3 active:scale-[0.98] transition-all text-left ${
+                                className={`rounded-3xl border px-3 py-3 text-left active:scale-[0.98] transition-all ${
                                   disabled
                                     ? "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
-                                    : "bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50/40"
+                                    : "bg-white border-slate-200 hover:border-amber-400 hover:bg-amber-50"
                                 }`}
                               >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="text-sm font-extrabold text-slate-900 truncate">
-                                    {(item.nombre || "").replace(/^Almuerzo (con )?/i, "")}
-                                  </div>
-                                  <PlusCircle size={18} className={disabled ? "text-slate-200" : "text-amber-500"} />
+                                <div className="text-base font-black text-slate-900">
+                                  {formatPrice(unit).replace(",00", "")}
                                 </div>
-                                <div className="mt-1 text-xs font-black text-slate-900">{formatPrice(unit)}</div>
                                 {isTakeaway && item.para_llevar && (item.precio_adicional_llevar || 0) > 0 && (
                                   <div className="text-[10px] font-extrabold text-amber-700 mt-1">
                                     +{formatPrice(item.precio_adicional_llevar || 0)} llevar
                                   </div>
                                 )}
+                                {!item.disponible && (
+                                  <div className="text-[10px] font-extrabold uppercase mt-1">Agotado</div>
+                                )}
                               </button>
                             );
                           })}
                         </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                // SINGLE
-                const item = group.items[0];
-                const unit = computeUnitPrice(item, isTakeaway);
-                const disabled = !item.disponible;
-
-                return (
-                  <button
-                    key={group.id}
-                    onClick={() => addToCart(item)}
-                    disabled={disabled}
-                    className={`bg-white rounded-2xl border shadow-sm p-4 text-left active:scale-[0.99] transition-all ${
-                      disabled
-                        ? "border-slate-200 text-slate-300 cursor-not-allowed bg-slate-50"
-                        : "border-slate-200 hover:border-amber-300 hover:shadow-md"
-                    }`}
-                  >
-                    <div className="font-extrabold text-slate-900 text-sm leading-snug">{item.nombre}</div>
-                    {item.descripcion ? (
-                      <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">{item.descripcion}</div>
-                    ) : (
-                      <div className="text-[11px] text-slate-400 mt-1">—</div>
-                    )}
-                    <div className="mt-3 flex items-end justify-between border-t border-slate-100 pt-3">
-                      <div>
-                        <div className="text-xs text-slate-500 font-semibold">Precio</div>
-                        <div className="text-lg font-black text-slate-900">{formatPrice(unit)}</div>
                       </div>
-                      <PlusCircle size={22} className={disabled ? "text-slate-200" : "text-amber-500"} />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
+                    );
+                  }
 
-      {/* Derecha: caja */}
-      <aside className="w-80 xl:w-96 bg-white border-l border-slate-200 flex flex-col shrink-0">
-        {/* header caja (ya no negro) */}
-        <div className="p-4 bg-white border-b border-slate-200 shrink-0">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2.5 h-2.5 rounded-full ${isTakeaway ? "bg-amber-500" : "bg-emerald-500"}`} />
-                <h2 className="font-extrabold text-slate-900">Pedido manual</h2>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                {isTakeaway ? "Para llevar: suma automáticamente el adicional." : "Mesa: usa el valor base."}
-              </p>
-            </div>
+                  // ALMUERZOS
+                  if (group.type === "almuerzo") {
+                    const isOpen = expanded[group.id] ?? true;
+                    return (
+                      <div
+                        key={group.id}
+                        className="bg-white rounded-3xl border border-slate-200 shadow-sm sm:col-span-2 xl:col-span-3 overflow-hidden"
+                      >
+                        <button
+                          onClick={() => toggleGroup(group.id)}
+                          className="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="bg-white border border-slate-200 text-slate-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                              {group.items.length}
+                            </span>
+                            <h3 className="font-extrabold text-slate-900 text-sm truncate">{group.title}</h3>
+                          </div>
+                          {isOpen ? (
+                            <ChevronUp size={16} className="text-slate-500" />
+                          ) : (
+                            <ChevronDown size={16} className="text-slate-500" />
+                          )}
+                        </button>
 
-            <button
-              onClick={openOrders}
-              className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 text-white font-extrabold hover:bg-slate-950"
-              title="Ver pedidos"
-            >
-              <ReceiptText size={16} /> Pedidos
-            </button>
-          </div>
+                        {isOpen && (
+                          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                            {group.items.map((item) => {
+                              const unit = computeUnitPrice(item, isTakeaway);
+                              const disabled = !item.disponible;
+                              return (
+                                <button
+                                  key={String(item.id)}
+                                  onClick={() => addToCart(item)}
+                                  disabled={disabled}
+                                  className={`rounded-3xl border px-3 py-3 active:scale-[0.98] transition-all text-left ${
+                                    disabled
+                                      ? "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+                                      : "bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50/40"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="text-sm font-extrabold text-slate-900 truncate">
+                                      {(item.nombre || "").replace(/^Almuerzo (con )?/i, "")}
+                                    </div>
+                                    <PlusCircle size={18} className={disabled ? "text-slate-200" : "text-amber-500"} />
+                                  </div>
+                                  <div className="mt-1 text-xs font-black text-slate-900">{formatPrice(unit)}</div>
+                                  {isTakeaway && item.para_llevar && (item.precio_adicional_llevar || 0) > 0 && (
+                                    <div className="text-[10px] font-extrabold text-amber-700 mt-1">
+                                      +{formatPrice(item.precio_adicional_llevar || 0)} llevar
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
 
-          {/* datos (opcionales) */}
-          <div className="mt-4 grid gap-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center bg-slate-50 rounded-xl px-3 py-2 border border-slate-200">
-                <User size={14} className="text-slate-400 mr-2" />
-                <input
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  placeholder="Nombre (opcional)"
-                  className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
-                />
-              </div>
-              <div className="flex items-center bg-slate-50 rounded-xl px-3 py-2 border border-slate-200">
-                <Phone size={14} className="text-slate-400 mr-2" />
-                <input
-                  value={numero}
-                  onChange={(e) => setNumero(e.target.value)}
-                  placeholder="Número (opcional)"
-                  className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
-                />
-              </div>
-            </div>
+                  // SINGLE
+                  const item = group.items[0];
+                  const unit = computeUnitPrice(item, isTakeaway);
+                  const disabled = !item.disponible;
 
-            <div className="flex items-center bg-slate-50 rounded-xl px-3 py-2 border border-slate-200">
-              <MapPin size={14} className="text-slate-400 mr-2" />
-              <input
-                value={direccion}
-                onChange={(e) => setDireccion(e.target.value)}
-                placeholder={isTakeaway ? "Dirección (opcional)" : "Mesa / lugar (opcional)"}
-                className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
-              />
-            </div>
-
-            {/* chips pago/estado */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center bg-slate-50 rounded-xl px-3 py-2 border border-slate-200">
-                <CreditCard size={14} className="text-slate-400 mr-2" />
-                <select
-                  value={metodoPago}
-                  onChange={(e) => setMetodoPago(e.target.value as any)}
-                  className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
-                >
-                  <option value="efectivo">efectivo</option>
-                  <option value="transferencia">transferencia</option>
-                </select>
-              </div>
-
-              <div className="flex items-center bg-slate-50 rounded-xl px-3 py-2 border border-slate-200">
-                <span className="text-[10px] font-extrabold text-slate-500 mr-2">Estado</span>
-                <select
-                  value={estado}
-                  onChange={(e) => setEstado(e.target.value as any)}
-                  className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
-                >
-                  <option value="pidiendo">pidiendo</option>
-                  <option value="impreso">impreso</option>
-                </select>
-              </div>
-            </div>
-
-            {isTakeaway && (
-              <div className="flex items-center bg-amber-50 rounded-xl px-3 py-2 border border-amber-200">
-                <span className="text-[10px] font-extrabold text-amber-800 mr-2">Domicilio</span>
-                <input
-                  type="number"
-                  value={valorDomicilio}
-                  onChange={(e) => setValorDomicilio(toInt(e.target.value))}
-                  placeholder="0"
-                  className="bg-transparent text-sm w-full outline-none text-slate-900 placeholder-amber-500"
-                />
+                  return (
+                    <button
+                      key={group.id}
+                      onClick={() => addToCart(item)}
+                      disabled={disabled}
+                      className={`bg-white rounded-3xl border shadow-sm p-4 text-left active:scale-[0.99] transition-all ${
+                        disabled
+                          ? "border-slate-200 text-slate-300 cursor-not-allowed bg-slate-50"
+                          : "border-slate-200 hover:border-amber-300 hover:shadow-md"
+                      }`}
+                    >
+                      <div className="font-extrabold text-slate-900 text-sm leading-snug">{item.nombre}</div>
+                      {item.descripcion ? (
+                        <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">{item.descripcion}</div>
+                      ) : (
+                        <div className="text-[11px] text-slate-400 mt-1">—</div>
+                      )}
+                      <div className="mt-3 flex items-end justify-between border-t border-slate-100 pt-3">
+                        <div>
+                          <div className="text-xs text-slate-500 font-semibold">Precio</div>
+                          <div className="text-lg font-black text-slate-900">{formatPrice(unit)}</div>
+                        </div>
+                        <PlusCircle size={22} className={disabled ? "text-slate-200" : "text-amber-500"} />
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
-          </div>
-        </div>
+          </section>
 
-        {/* carrito */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
-              <Package size={32} />
-              <p className="text-sm font-semibold">Sin productos</p>
-              <p className="text-[11px] text-slate-400">Agrega desde el menú.</p>
-            </div>
-          ) : (
-            <>
-              {cart.map((item) => (
-                <div key={item.id} className="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="min-w-0">
-                      <p className="font-extrabold text-slate-900 text-sm break-words leading-tight">{item.name}</p>
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        {formatPrice(item.priceUnit)} c/u
-                        {isTakeaway && item.extraLlevar > 0 && (
-                          <span className="ml-2 text-amber-700 font-extrabold">
-                            (+{formatPrice(item.extraLlevar)})
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => remove(item.id)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                      title="Quitar"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+          {/* CART (desktop/tablet) */}
+          <aside className="hidden lg:flex bg-white border border-slate-200 rounded-3xl overflow-hidden flex-col min-h-[calc(100vh-140px)] sticky top-[100px]">
+            {/* header */}
+            <div className="p-4 border-b border-slate-200">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${isTakeaway ? "bg-amber-500" : "bg-emerald-500"}`} />
+                    <h2 className="font-extrabold text-slate-900">Caja</h2>
                   </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {isTakeaway ? "Para llevar: suma adicional (si aplica)." : "Mesa: valor base."}
+                  </p>
+                </div>
 
-                  <div className="mt-3 flex justify-between items-center">
-                    <div className="flex items-center bg-slate-100 rounded-xl h-9 border border-slate-200 overflow-hidden">
-                      <button
-                        onClick={() => dec(item.id)}
-                        className="w-10 h-full flex items-center justify-center hover:bg-slate-200 text-slate-600"
-                      >
-                        <Minus size={14} />
-                      </button>
-                      <span className="w-10 text-center font-black text-sm text-slate-900">{item.quantity}</span>
-                      <button
-                        onClick={() => inc(item.id)}
-                        className="w-10 h-full flex items-center justify-center hover:bg-slate-200 text-slate-600"
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-[11px] text-slate-500 font-semibold">Línea</div>
-                      <div className="font-black text-slate-900">{formatPrice(item.quantity * item.priceUnit)}</div>
-                    </div>
+                {cartCount > 0 && (
+                  <div className="text-[11px] font-extrabold bg-slate-900 text-white px-2 py-1 rounded-full">
+                    {cartCount} item{cartCount === 1 ? "" : "s"}
                   </div>
+                )}
+              </div>
 
-                  <div className="mt-3 relative">
-                    <MessageSquare size={14} className="absolute left-3 top-3 text-slate-400" />
+              {/* datos */}
+              <div className="mt-4 grid gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                    <User size={14} className="text-slate-400 mr-2" />
                     <input
-                      value={item.notes}
-                      onChange={(e) => setNote(item.id, e.target.value)}
-                      placeholder="Nota (ej: sin ensalada, con ají)"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3 text-sm focus:ring-2 focus:ring-amber-500/40 outline-none text-slate-800 placeholder-slate-400"
+                      value={nombre}
+                      onChange={(e) => setNombre(e.target.value)}
+                      placeholder="Nombre (opcional)"
+                      className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                    />
+                  </div>
+                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                    <Phone size={14} className="text-slate-400 mr-2" />
+                    <input
+                      value={numero}
+                      onChange={(e) => setNumero(e.target.value)}
+                      placeholder="Número (opcional)"
+                      className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
                     />
                   </div>
                 </div>
-              ))}
 
-              {/* preview detalle (muy útil para UX) */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-3">
-                <div className="text-xs font-extrabold text-slate-900 mb-2">Detalle que se enviará</div>
-                <pre className="text-[11px] text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-xl p-3 leading-relaxed">
-{detallePreview.raw || "(vacío)"}
-                </pre>
-              </div>
-            </>
-          )}
-        </div>
+                <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                  <MapPin size={14} className="text-slate-400 mr-2" />
+                  <input
+                    value={direccion}
+                    onChange={(e) => setDireccion(e.target.value)}
+                    placeholder={isTakeaway ? "Dirección (opcional)" : "Mesa / lugar (opcional)"}
+                    className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                  />
+                </div>
 
-        {/* footer total + acciones */}
-        <div className="bg-white border-t border-slate-200 p-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <div className="text-[11px] text-slate-500 font-semibold">Restaurante</div>
-              <div className="text-xl font-black text-slate-900">{formatPrice(totalRestaurante)}</div>
-            </div>
-            {isTakeaway && (
-              <div className="text-right">
-                <div className="text-[11px] text-slate-500 font-semibold">Domicilio</div>
-                <div className="text-lg font-black text-slate-900">{formatPrice(valorDomicilio || 0)}</div>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-3 flex justify-between items-center border-t border-slate-100 pt-3">
-            <div className="text-sm font-extrabold text-slate-700">Total</div>
-            <div className="text-2xl font-black text-slate-900">{formatPrice(totalFinal)}</div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <button
-              onClick={clearAll}
-              className="py-3 rounded-2xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
-              title="Limpiar"
-            >
-              <Trash2 size={18} />
-            </button>
-
-            <button
-              onClick={() => saveOrder({ print: false })}
-              className="py-3 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
-            >
-              <Save size={18} /> Guardar
-            </button>
-
-            <button
-              onClick={() => saveOrder({ print: true })}
-              className="py-3 rounded-2xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
-              title="Guardar e imprimir"
-            >
-              <Printer size={18} /> Imprimir
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* ===== DRAWER PEDIDOS (oculto hasta click) ===== */}
-      {ordersOpen && (
-        <div className="fixed inset-0 z-[80]">
-          {/* overlay */}
-          <button
-            onClick={() => setOrdersOpen(false)}
-            className="absolute inset-0 bg-black/30"
-            aria-label="Cerrar"
-          />
-
-          {/* panel */}
-          <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white shadow-2xl border-l border-slate-200 flex flex-col">
-            <div className="p-4 border-b border-slate-200">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="font-extrabold text-slate-900 flex items-center gap-2">
-                    <ReceiptText size={18} className="text-amber-600" /> Pedidos manuales
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                    <CreditCard size={14} className="text-slate-400 mr-2" />
+                    <select
+                      value={metodoPago}
+                      onChange={(e) => setMetodoPago(e.target.value as any)}
+                      className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
+                    >
+                      <option value="efectivo">efectivo</option>
+                      <option value="transferencia">transferencia</option>
+                    </select>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-1">
-                    {manualOrders.length ? `${manualOrders.length} pedidos` : "Sin pedidos cargados"}
+
+                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                    <span className="text-[10px] font-extrabold text-slate-500 mr-2">Estado</span>
+                    <select
+                      value={estado}
+                      onChange={(e) => setEstado(e.target.value as any)}
+                      className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
+                    >
+                      <option value="pidiendo">pidiendo</option>
+                      <option value="impreso">impreso</option>
+                    </select>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                {isTakeaway && (
+                  <div className="flex items-center bg-amber-50 rounded-2xl px-3 py-2 border border-amber-200">
+                    <span className="text-[10px] font-extrabold text-amber-800 mr-2">Domicilio</span>
+                    <input
+                      type="number"
+                      value={valorDomicilio}
+                      onChange={(e) => setValorDomicilio(toInt(e.target.value))}
+                      placeholder="0"
+                      className="bg-transparent text-sm w-full outline-none text-slate-900 placeholder-amber-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* items */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50">
+              {cart.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
+                  <ShoppingBag size={32} />
+                  <p className="text-sm font-semibold">Carrito vacío</p>
+                  <p className="text-[11px] text-slate-400">Agrega desde el menú.</p>
+                </div>
+              ) : (
+                <>
+                  {cart.map((item) => (
+                    <div key={item.id} className="bg-white rounded-3xl border border-slate-200 p-3 shadow-sm">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <p className="font-extrabold text-slate-900 text-sm break-words leading-tight">{item.name}</p>
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            {formatPrice(item.priceUnit)} c/u
+                            {isTakeaway && item.extraLlevar > 0 && (
+                              <span className="ml-2 text-amber-700 font-extrabold">
+                                (+{formatPrice(item.extraLlevar)})
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => remove(item.id)}
+                          className="p-2 rounded-2xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Quitar"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      <div className="mt-3 flex justify-between items-center">
+                        <div className="flex items-center bg-slate-100 rounded-2xl h-10 border border-slate-200 overflow-hidden">
+                          <button
+                            onClick={() => dec(item.id)}
+                            className="w-11 h-full flex items-center justify-center hover:bg-slate-200 text-slate-700"
+                          >
+                            <Minus size={14} />
+                          </button>
+                          <span className="w-10 text-center font-black text-sm text-slate-900">{item.quantity}</span>
+                          <button
+                            onClick={() => inc(item.id)}
+                            className="w-11 h-full flex items-center justify-center hover:bg-slate-200 text-slate-700"
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-[11px] text-slate-500 font-semibold">Línea</div>
+                          <div className="font-black text-slate-900">{formatPrice(item.quantity * item.priceUnit)}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 relative">
+                        <MessageSquare size={14} className="absolute left-3 top-3 text-slate-400" />
+                        <input
+                          value={item.notes}
+                          onChange={(e) => setNote(item.id, e.target.value)}
+                          placeholder="Nota (ej: sin ensalada, con ají)"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-2.5 pl-10 pr-3 text-sm focus:ring-2 focus:ring-amber-500/40 outline-none text-slate-800 placeholder-slate-400"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* preview colapsable */}
+                  <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
+                    <button
+                      onClick={() => setDetalleOpen((v) => !v)}
+                      className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
+                    >
+                      <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
+                      {detalleOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+                    </button>
+                    {detalleOpen && (
+                      <div className="p-3">
+                        <pre className="text-[11px] text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-2xl p-3 leading-relaxed">
+{detallePreview.raw || "(vacío)"}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* footer */}
+            <div className="bg-white border-t border-slate-200 p-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-[11px] text-slate-500 font-semibold">Restaurante</div>
+                  <div className="text-xl font-black text-slate-900">{formatPrice(totalRestaurante)}</div>
+                </div>
+                {isTakeaway && (
+                  <div className="text-right">
+                    <div className="text-[11px] text-slate-500 font-semibold">Domicilio</div>
+                    <div className="text-lg font-black text-slate-900">{formatPrice(valorDomicilio || 0)}</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 flex justify-between items-center border-t border-slate-100 pt-3">
+                <div className="text-sm font-extrabold text-slate-700">Total</div>
+                <div className="text-2xl font-black text-slate-900">{formatPrice(totalFinal)}</div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <button
+                  onClick={clearAll}
+                  className="py-3 rounded-3xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
+                  title="Limpiar"
+                >
+                  <Trash2 size={18} />
+                </button>
+
+                <button
+                  onClick={() => saveOrder({ print: false })}
+                  className="py-3 rounded-3xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Save size={18} /> Guardar
+                </button>
+
+                <button
+                  onClick={() => saveOrder({ print: true })}
+                  className="py-3 rounded-3xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
+                  title="Guardar e imprimir"
+                >
+                  <Printer size={18} /> Imprimir
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      {/* ===== MOBILE: bottom bar + bottom sheet cart ===== */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50">
+        {/* bar */}
+        <div className="bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2">
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-2">
+            <button
+              onClick={() => setCartOpenMobile(true)}
+              className="flex-1 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-slate-900 text-white font-extrabold"
+            >
+              <div className="flex items-center gap-2">
+                <ShoppingBag size={18} />
+                <span>Ver carrito</span>
+                {cartCount > 0 && (
+                  <span className="ml-1 text-[11px] bg-white/15 px-2 py-0.5 rounded-full">
+                    {cartCount}
+                  </span>
+                )}
+              </div>
+              <div className="text-sm">{formatPrice(totalFinal)}</div>
+            </button>
+          </div>
+        </div>
+
+        {/* sheet */}
+        {cartOpenMobile && (
+          <div className="fixed inset-0 z-[80]">
+            <button
+              onClick={() => setCartOpenMobile(false)}
+              className="absolute inset-0 bg-black/35"
+              aria-label="Cerrar"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[28px] border-t border-slate-200 shadow-2xl max-h-[88vh] flex flex-col">
+              <div className="px-4 pt-4 pb-3 border-b border-slate-200">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-black text-slate-900">Caja</div>
+                    <div className="text-[11px] text-slate-500">
+                      {isTakeaway ? "Para llevar: adicional si aplica." : "Mesa: valor base."}
+                    </div>
+                  </div>
                   <button
-                    onClick={fetchManualOrders}
-                    className={`px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-extrabold hover:bg-slate-100 flex items-center gap-2 ${
-                      loadingOrders ? "opacity-70" : ""
-                    }`}
-                  >
-                    <RefreshCw size={16} className={loadingOrders ? "animate-spin" : ""} />
-                    Actualizar
-                  </button>
-                  <button
-                    onClick={() => setOrdersOpen(false)}
-                    className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
+                    onClick={() => setCartOpenMobile(false)}
+                    className="p-2 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700"
                     title="Cerrar"
                   >
                     <X size={18} />
                   </button>
                 </div>
+
+                {/* datos */}
+                <div className="mt-3 grid gap-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                      <User size={14} className="text-slate-400 mr-2" />
+                      <input
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        placeholder="Nombre (opcional)"
+                        className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                      />
+                    </div>
+                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                      <Phone size={14} className="text-slate-400 mr-2" />
+                      <input
+                        value={numero}
+                        onChange={(e) => setNumero(e.target.value)}
+                        placeholder="Número (opcional)"
+                        className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                    <MapPin size={14} className="text-slate-400 mr-2" />
+                    <input
+                      value={direccion}
+                      onChange={(e) => setDireccion(e.target.value)}
+                      placeholder={isTakeaway ? "Dirección (opcional)" : "Mesa / lugar (opcional)"}
+                      className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                      <CreditCard size={14} className="text-slate-400 mr-2" />
+                      <select
+                        value={metodoPago}
+                        onChange={(e) => setMetodoPago(e.target.value as any)}
+                        className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
+                      >
+                        <option value="efectivo">efectivo</option>
+                        <option value="transferencia">transferencia</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
+                      <span className="text-[10px] font-extrabold text-slate-500 mr-2">Estado</span>
+                      <select
+                        value={estado}
+                        onChange={(e) => setEstado(e.target.value as any)}
+                        className="bg-transparent text-sm w-full outline-none text-slate-800 appearance-none cursor-pointer"
+                      >
+                        <option value="pidiendo">pidiendo</option>
+                        <option value="impreso">impreso</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {isTakeaway && (
+                    <div className="flex items-center bg-amber-50 rounded-2xl px-3 py-2 border border-amber-200">
+                      <span className="text-[10px] font-extrabold text-amber-800 mr-2">Domicilio</span>
+                      <input
+                        type="number"
+                        value={valorDomicilio}
+                        onChange={(e) => setValorDomicilio(toInt(e.target.value))}
+                        placeholder="0"
+                        className="bg-transparent text-sm w-full outline-none text-slate-900 placeholder-amber-500"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="mt-3 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input
-                  value={ordersSearch}
-                  onChange={(e) => setOrdersSearch(e.target.value)}
-                  placeholder="Buscar por nombre, dirección o número…"
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/40 outline-none text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-3 bg-slate-50">
-              {loadingOrders ? (
-                <div className="flex flex-col items-center justify-center h-40 text-slate-400">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mb-2" />
-                  <p className="text-sm font-semibold">Cargando pedidos...</p>
-                </div>
-              ) : filteredOrders.length === 0 ? (
-                <div className="text-center text-slate-400 text-sm py-10">
-                  No hay resultados.
-                </div>
-              ) : (
-                filteredOrders.slice(0, 60).map((o) => {
-                  const detalle = o.detalle_pedido ?? o["detalle pedido"] ?? "";
-                  const preview = parseDetailsForView(detalle);
-                  const total = (o.valor_restaurante || 0) + (o.valor_domicilio || 0);
-
-                  return (
-                    <div key={o.row_number} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm mb-3">
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="min-w-0">
-                          <div className="text-[11px] text-slate-500 font-mono font-bold">#{o.row_number}</div>
-                          <div className="font-black text-slate-900 break-words">{o.nombre || "Cliente"}</div>
-                          <div className="text-[11px] text-slate-600 break-words">{o.direccion}</div>
-                          <div className="text-[10px] text-slate-400 mt-1">{o.fecha}</div>
-
-                          <div className="mt-2 flex gap-2 flex-wrap">
-                            <span className="px-2 py-1 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700">
-                              {o.metodo_pago}
-                            </span>
-                            <span className="px-2 py-1 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200">
-                              {o.estado}
-                            </span>
-                            {o.valor_domicilio > 0 && (
-                              <span className="px-2 py-1 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                + domicilio
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col items-end gap-2 shrink-0">
-                          <div className="text-right">
-                            <div className="text-[11px] text-slate-500 font-semibold">Total</div>
-                            <div className="text-lg font-black text-slate-900">{money(total)}</div>
+              {/* list */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50">
+                {cart.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <ShoppingBag className="mx-auto mb-2" />
+                    Carrito vacío
+                  </div>
+                ) : (
+                  <>
+                    {cart.map((item) => (
+                      <div key={item.id} className="bg-white rounded-3xl border border-slate-200 p-3 shadow-sm">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <p className="font-extrabold text-slate-900 text-sm break-words leading-tight">{item.name}</p>
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              {formatPrice(item.priceUnit)} c/u
+                              {isTakeaway && item.extraLlevar > 0 && (
+                                <span className="ml-2 text-amber-700 font-extrabold">
+                                  (+{formatPrice(item.extraLlevar)})
+                                </span>
+                              )}
+                            </p>
                           </div>
                           <button
-                            onClick={() => printTicket(o)}
-                            className="px-3 py-2 rounded-xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 flex items-center gap-2"
+                            onClick={() => remove(item.id)}
+                            className="p-2 rounded-2xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            title="Quitar"
                           >
-                            <Printer size={16} /> Imprimir
+                            <Trash2 size={16} />
                           </button>
                         </div>
-                      </div>
 
-                      <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
-                        {preview.slice(0, 3).map((it, idx) => (
-                          <div key={idx} className="flex justify-between gap-2 text-[12px] text-slate-700">
-                            <span className="truncate">
-                              <span className="font-extrabold">{it.quantity}x</span> {it.name}
-                            </span>
-                            <span className="font-extrabold text-slate-700">{money(it.priceTotal)}</span>
+                        <div className="mt-3 flex justify-between items-center">
+                          <div className="flex items-center bg-slate-100 rounded-2xl h-10 border border-slate-200 overflow-hidden">
+                            <button
+                              onClick={() => dec(item.id)}
+                              className="w-11 h-full flex items-center justify-center hover:bg-slate-200 text-slate-700"
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="w-10 text-center font-black text-sm text-slate-900">{item.quantity}</span>
+                            <button
+                              onClick={() => inc(item.id)}
+                              className="w-11 h-full flex items-center justify-center hover:bg-slate-200 text-slate-700"
+                            >
+                              <Plus size={14} />
+                            </button>
                           </div>
-                        ))}
-                        {preview.length > 3 && (
-                          <div className="text-[11px] text-slate-400 mt-1">+{preview.length - 3} más…</div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
 
-            <div className="p-3 border-t border-slate-200 bg-white">
-              <button
-                onClick={() => setOrdersOpen(false)}
-                className="w-full py-3 rounded-2xl bg-slate-100 text-slate-800 font-extrabold hover:bg-slate-200"
-              >
-                Cerrar
-              </button>
+                          <div className="text-right">
+                            <div className="text-[11px] text-slate-500 font-semibold">Línea</div>
+                            <div className="font-black text-slate-900">{formatPrice(item.quantity * item.priceUnit)}</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 relative">
+                          <MessageSquare size={14} className="absolute left-3 top-3 text-slate-400" />
+                          <input
+                            value={item.notes}
+                            onChange={(e) => setNote(item.id, e.target.value)}
+                            placeholder="Nota (ej: sin ensalada, con ají)"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-2.5 pl-10 pr-3 text-sm focus:ring-2 focus:ring-amber-500/40 outline-none text-slate-800 placeholder-slate-400"
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
+                      <button
+                        onClick={() => setDetalleOpen((v) => !v)}
+                        className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
+                      >
+                        <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
+                        {detalleOpen ? (
+                          <ChevronUp size={16} className="text-slate-500" />
+                        ) : (
+                          <ChevronDown size={16} className="text-slate-500" />
+                        )}
+                      </button>
+                      {detalleOpen && (
+                        <div className="p-3">
+                          <pre className="text-[11px] text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-2xl p-3 leading-relaxed">
+{detallePreview.raw || "(vacío)"}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* totals + actions */}
+              <div className="p-3 border-t border-slate-200 bg-white">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-[11px] text-slate-500 font-semibold">Restaurante</div>
+                    <div className="text-xl font-black text-slate-900">{formatPrice(totalRestaurante)}</div>
+                  </div>
+                  {isTakeaway && (
+                    <div className="text-right">
+                      <div className="text-[11px] text-slate-500 font-semibold">Domicilio</div>
+                      <div className="text-lg font-black text-slate-900">{formatPrice(valorDomicilio || 0)}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3 flex justify-between items-center border-t border-slate-100 pt-3">
+                  <div className="text-sm font-extrabold text-slate-700">Total</div>
+                  <div className="text-2xl font-black text-slate-900">{formatPrice(totalFinal)}</div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button
+                    onClick={clearAll}
+                    className="py-3 rounded-3xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
+                    title="Limpiar"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+
+                  <button
+                    onClick={() => saveOrder({ print: false })}
+                    className="py-3 rounded-3xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Save size={18} /> Guardar
+                  </button>
+
+                  <button
+                    onClick={() => saveOrder({ print: true })}
+                    className="py-3 rounded-3xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
+                    title="Guardar e imprimir"
+                  >
+                    <Printer size={18} /> Imprimir
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setCartOpenMobile(false)}
+                  className="mt-2 w-full py-3 rounded-3xl bg-slate-100 text-slate-800 font-extrabold hover:bg-slate-200"
+                >
+                  Seguir agregando
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* spacing para que el bottom bar no tape contenido */}
+      <div className="lg:hidden h-[84px]" />
     </div>
   );
 };

@@ -19,7 +19,12 @@ const center = (s: string) => {
 const money = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
 
 // CORRECCIÓN 1: Convertir a String explícitamente para evitar error con números de teléfono
-const cleanPhone = (raw: any) => String(raw || '').replace('@s.whatsapp.net', '').replace(/[^0-9+]/g, '');
+const cleanPhone = (raw: unknown) => {
+  const s = String(raw ?? "");
+  return s
+    .replace(/@s\.whatsapp\.net$/i, "")
+    .replace(/[^0-9+]/g, "");
+};
 
 // CORRECCIÓN 2: Convertir a String antes de usar replace para evitar error con direcciones numéricas (ej: 12016)
 const sanitizeForTicket = (s: any): string =>
@@ -364,7 +369,7 @@ const OrdersTab: React.FC = () => {
   // LOGICA DE IMPRESION HIBRIDA (Android=RawBT, Desktop=Window.print)
   const printOrder = async (order: Order) => {
     const customerName = sanitizeForTicket(order.nombre || 'Cliente');
-    const customerPhone = cleanPhone(order.numero);
+    const customerPhone = cleanPhone(order.numero ?? "");
     const items = parseDetails(order["detalle pedido"]);
     const subtotal = order.valor_restaurante || 0;
     const domicilio = order.valor_domicilio || 0;
