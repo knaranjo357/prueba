@@ -10,7 +10,6 @@ import {
   Plus,
   Trash2,
   Save,
-  Printer,
   User,
   Phone,
   MapPin,
@@ -57,41 +56,35 @@ type CartItem = {
   notes: string;
 };
 
-type ManualOrder = {
-  row_number: number;
-  fecha: string;
-  nombre: string;
-  numero: string;
-  direccion: string;
-  detalle_pedido?: string;
-  "detalle pedido"?: string;
-  valor_restaurante: number;
-  valor_domicilio: number;
-  metodo_pago: string;
-  estado: string;
-};
-
 type DomicilioRow = {
   row_number?: number;
   barrio: string;
   precio: number;
 };
 
+type ManualProps = {
+  onOrderSaved?: () => void;
+};
+
 /** ===== helpers ===== */
 const pad2 = (n: number) => String(n).padStart(2, "0");
+
 const makeNumeroFallback = () => {
   const d = new Date();
   return `p_${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
 };
+
 const toInt = (v: any) => {
   const n = parseInt(String(v ?? "").replace(/[^0-9\-]/g, ""), 10);
   return Number.isFinite(n) ? n : 0;
 };
+
 const normalizeNote = (s: string) => {
   const raw = (s || "").trim();
   if (!raw) return "";
   return raw.replace(/^\(+/, "").replace(/\)+$/, "").trim();
 };
+
 const norm = (s: string) => (s || "").trim().toLowerCase();
 
 const computeUnitPrice = (item: MenuItemFull, isTakeaway: boolean) => {
@@ -117,8 +110,11 @@ const splitOutsideParens = (s: string, separators = [";"]) => {
     if (depth === 0 && sepSet.has(ch)) {
       if (buf.trim()) out.push(buf.trim());
       buf = "";
-    } else buf += ch;
+    } else {
+      buf += ch;
+    }
   }
+
   if (buf.trim()) out.push(buf.trim());
   return out;
 };
@@ -127,6 +123,7 @@ const splitByCommaOutsideParens = (s: string) => splitOutsideParens(s, [","]);
 
 const parseDetailsForView = (raw: string) => {
   if (!raw) return [];
+
   const itemStrings = splitOutsideParens(raw, [";", "|"])
     .map((x) => x.trim())
     .filter(Boolean);
@@ -166,334 +163,9 @@ const serializeCartToDetalle = (items: CartItem[]) =>
     })
     .join("\n");
 
-/** ===== ticket helpers ===== */
-const COLS = 42;
-const repeat = (ch: string, n: number) => Array(Math.max(0, n)).fill(ch).join("");
-const padRight = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + repeat(" ", n - s.length));
-const center = (s: string) => {
-  const len = Math.min(s.length, COLS);
-  const left = Math.floor((COLS - len) / 2);
-  return repeat(" ", Math.max(0, left)) + s.slice(0, COLS);
-};
-const money = (n: number) => `$${(n || 0).toLocaleString("es-CO")}`;
-
-const sanitizeForTicket = (s: any): string =>
-  String(s || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/\t/g, " ")
-    .replace(/[^\S\n]+/g, " ")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .trim();
-
-const wrapText = (text: any, width: number): string[] => {
-  const str = String(text || "");
-  if (width <= 0) return [str];
-  const rawTokens = str.trim().split(/\s+/).filter(Boolean);
-  const tokens: string[] = [];
-  for (const t of rawTokens) {
-    if (t.length <= width) tokens.push(t);
-    else for (let i = 0; i < t.length; i += width) tokens.push(t.slice(i, i + width));
-  }
-  const lines: string[] = [];
-  let line = "";
-  for (const tok of tokens) {
-    if (!line.length) line = tok;
-    else if ((line + " " + tok).length <= width) line += " " + tok;
-    else {
-      lines.push(line);
-      line = tok;
-    }
-  }
-  if (line) lines.push(line);
-  return lines.length ? lines : [""];
-};
-
-const wrapLabelValue = (label: string, value: string): string[] => {
-  const prefix = `${label}: `;
-  const valueWidth = Math.max(0, COLS - prefix.length);
-  const vLines = wrapText(value || "", valueWidth);
-  const out: string[] = [];
-  out.push(padRight(prefix + (vLines[0] || ""), COLS));
-  const indent = repeat(" ", prefix.length);
-  for (let i = 1; i < vLines.length; i++) out.push(padRight(indent + vLines[i], COLS));
-  return out;
-};
-
-const parseMoneyToInt = (s: string | number): number => {
-  const n = parseInt(String(s || "").replace(/[^0-9\-]/g, ""), 10);
-  return isNaN(n) ? 0 : n;
-};
-
-const parseDetailsForPrint = (raw: string) => {
-  if (!raw) return [];
-  const itemStrings = splitOutsideParens(raw, [";", "|"]).map((x) => x.trim()).filter(Boolean);
-
-  return itemStrings.map((itemStr) => {
-    const parts = splitByCommaOutsideParens(itemStr).map((x) => x.trim());
-    let quantity = "1";
-    let name = "";
-    let priceNum = 0;
-
-    if (parts.length >= 3) {
-      quantity = parts[0].replace(/^-/, "").trim() || "1";
-      name = parts.slice(1, parts.length - 1).join(", ").trim();
-      priceNum = parseMoneyToInt(parts[parts.length - 1]);
-    } else if (parts.length === 2) {
-      quantity = "1";
-      name = parts[0];
-      priceNum = parseMoneyToInt(parts[1]);
-    } else {
-      quantity = "1";
-      name = parts[0] || "";
-      priceNum = 0;
-    }
-    const qMatch = quantity.match(/-?\d+/);
-    if (qMatch) quantity = String(Math.abs(parseInt(qMatch[0], 10)));
-    return { quantity, name, priceNum };
-  });
-};
-
-const formatItemBlock = (qty: string, name: string, priceNum: number): string[] => {
-  const price = money(priceNum);
-  const qtyLabel = qty ? `${qty} ` : "";
-  const rightWidth = price.length + 1;
-  const leftWidth = COLS - rightWidth;
-  const leftText = (qtyLabel + (name || "")).trim();
-  const leftLines = wrapText(leftText, leftWidth);
-  const out: string[] = [];
-  const firstLeft = padRight(leftLines[0] || "", leftWidth);
-  out.push(firstLeft + " " + price);
-  const indent = repeat(" ", qtyLabel.length || 0);
-  for (let i = 1; i < leftLines.length; i++) out.push(padRight(indent + leftLines[i], COLS));
-  return out;
-};
-
-// RawBT encoder
-const bytesToBase64 = (bytes: number[]): string => {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-};
-
-const cp1252Map: Record<string, number> = {
-  Á: 0xc1,
-  É: 0xc9,
-  Í: 0xcd,
-  Ó: 0xd3,
-  Ú: 0xda,
-  Ü: 0xdc,
-  Ñ: 0xd1,
-  á: 0xe1,
-  é: 0xe9,
-  í: 0xed,
-  ó: 0xf3,
-  ú: 0xfa,
-  ü: 0xfc,
-  ñ: 0xf1,
-  "€": 0x80,
-  "£": 0xa3,
-  "¥": 0xa5,
-  "¢": 0xa2,
-  "°": 0xb0,
-  "¿": 0xbf,
-  "¡": 0xa1,
-  "“": 0x93,
-  "”": 0x94,
-  "‘": 0x91,
-  "’": 0x92,
-  "—": 0x97,
-  "–": 0x96,
-  "…": 0x85,
-};
-
-const asciiFallback: Record<string, string> = {
-  "“": '"',
-  "”": '"',
-  "‘": "'",
-  "’": "'",
-  "—": "-",
-  "–": "-",
-  "…": "...",
-  "€": "EUR",
-};
-
-const encodeCP1252 = (str: string): number[] => {
-  const bytes: number[] = [];
-  for (const ch of str) {
-    const code = ch.codePointAt(0)!;
-    if (code <= 0x7f) {
-      bytes.push(code);
-      continue;
-    }
-    if (cp1252Map[ch] !== undefined) {
-      bytes.push(cp1252Map[ch]);
-      continue;
-    }
-    const basic = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (basic.length === 1 && basic.charCodeAt(0) <= 0x7f) {
-      bytes.push(basic.charCodeAt(0));
-      continue;
-    }
-    if (asciiFallback[ch]) {
-      for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0));
-      continue;
-    }
-    bytes.push(0x3f); // '?'
-  }
-  return bytes;
-};
-
-const isAndroid = () => /Android/i.test(navigator.userAgent || "");
-
-const buildEscposFromLines = (lines: string[]): number[] => {
-  const bytes: number[] = [];
-  bytes.push(0x1b, 0x40); // init
-  bytes.push(0x1b, 0x74, 0x10); // codepage 16
-  bytes.push(0x1b, 0x61, 0x00); // left
-  bytes.push(0x1d, 0x21, 0x01); // bold-ish
-  const body = lines.join("\n") + "\n";
-  bytes.push(...encodeCP1252(body));
-  bytes.push(0x0a, 0x0a, 0x0a);
-  bytes.push(0x1d, 0x56, 0x00); // cut
-  return bytes;
-};
-
-const sendToRawBT = async (ticketLines: string[]) => {
-  if (!isAndroid()) throw new Error("Requiere Android con RawBT.");
-  const escposBytes = buildEscposFromLines(ticketLines);
-  const base64 = bytesToBase64(escposBytes);
-  const url = `rawbt:base64,${base64}`;
-
-  try {
-    (window as any).location.href = url;
-    return;
-  } catch {}
-
-  try {
-    const a = document.createElement("a");
-    a.href = url;
-    a.rel = "noopener noreferrer";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    return;
-  } catch {}
-
-  throw new Error("No se pudo invocar RawBT.");
-};
-
-const printTicket = async (order: ManualOrder) => {
-  const detalle = order.detalle_pedido ?? order["detalle pedido"] ?? "";
-  const items = parseDetailsForPrint(detalle);
-
-  const subtotal = order.valor_restaurante || 0;
-  const domicilio = order.valor_domicilio || 0;
-  const total = subtotal + domicilio;
-
-  const before: string[] = [];
-  const detailLines: string[] = [];
-  const after: string[] = [];
-
-  before.push(repeat("=", COLS));
-  before.push(center("LUIS RES"));
-  before.push(center("Cra 37 #109-24"));
-  before.push(center("Floridablanca - Caldas"));
-  before.push(repeat("=", COLS));
-  before.push(padRight(`PEDIDO #${order.row_number ?? ""}`, COLS));
-  before.push(...wrapLabelValue("Fecha", sanitizeForTicket(order.fecha || "")));
-  before.push(...wrapLabelValue("Cliente", sanitizeForTicket(order.nombre || "Cliente")));
-  before.push(...wrapLabelValue("Teléfono", sanitizeForTicket(order.numero || "")));
-  before.push(...wrapLabelValue("Dirección", sanitizeForTicket(order.direccion || "")));
-  before.push(repeat("-", COLS));
-
-  detailLines.push(center("DETALLE DEL PEDIDO"));
-  detailLines.push(repeat("-", COLS));
-  items.forEach(({ quantity, name, priceNum }) => {
-    formatItemBlock(quantity || "1", sanitizeForTicket(name), priceNum).forEach((l) => detailLines.push(l));
-  });
-  detailLines.push(repeat("-", COLS));
-
-  const totalLine = (label: string, amount: number) => {
-    const right = money(amount);
-    const leftWidth = COLS - right.length - 1;
-    return padRight(label, leftWidth) + " " + right;
-  };
-
-  after.push(totalLine("Subtotal", subtotal));
-  after.push(totalLine("Domicilio", domicilio));
-  after.push(totalLine("TOTAL", total));
-  after.push("");
-  after.push(...wrapLabelValue("Método de pago", sanitizeForTicket(order.metodo_pago || "")));
-  after.push(...wrapLabelValue("Estado", sanitizeForTicket(order.estado || "")));
-  after.push(repeat("=", COLS));
-  after.push(center("¡Gracias por su compra!"));
-  after.push(repeat("=", COLS));
-
-  if (isAndroid()) {
-    await sendToRawBT([...before, ...detailLines, ...after]);
-    return;
-  }
-
-  const esc = (s: string) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  const itemsHtml = items
-    .map(
-      ({ quantity, name, priceNum }) => `
-        <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;font-size:16px;">
-          <div><b>${esc(quantity || "1")}x</b></div>
-          <div>${esc(sanitizeForTicket(name))}</div>
-          <div style="text-align:right;white-space:nowrap;"><b>${esc(money(priceNum))}</b></div>
-        </div>
-      `
-    )
-    .join("");
-
-  const html = `
-  <!doctype html>
-  <html><head><meta charset="utf-8"/>
-  <style>
-    @media print { @page { size: 80mm auto; margin: 0; } }
-    body{font-family:Courier New,monospace;margin:0;padding:0}
-    .t{width:72mm;margin:0 auto;padding:8px}
-    .c{text-align:center}
-    .hr{border-top:1px solid #000;margin:8px 0}
-  </style>
-  </head>
-  <body>
-    <div class="t">
-      <div class="c"><div style="font-size:18px;font-weight:900">LUIS RES</div>
-      <div>Cra 37 #109-24</div><div>Floridablanca - Caldas</div></div>
-      <div class="hr"></div>
-      <div><b>Pedido:</b> #${esc(String(order.row_number ?? ""))}</div>
-      <div><b>Fecha:</b> ${esc(order.fecha || "")}</div>
-      <div><b>Cliente:</b> ${esc(order.nombre || "Cliente")}</div>
-      <div><b>Tel:</b> ${esc(order.numero || "")}</div>
-      <div><b>Dir:</b> ${esc(order.direccion || "")}</div>
-      <div class="hr"></div>
-      <div class="c" style="font-weight:900">DETALLE</div>
-      <div style="display:grid;gap:6px">${itemsHtml}</div>
-      <div class="hr"></div>
-      <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
-        <div>Subtotal</div><div><b>${esc(money(subtotal))}</b></div>
-        <div>Domicilio</div><div><b>${esc(money(domicilio))}</b></div>
-        <div style="font-weight:900">TOTAL</div><div style="font-weight:900">${esc(money(total))}</div>
-      </div>
-      <div class="hr"></div>
-      <div class="c" style="font-weight:900">¡Gracias por su compra!</div>
-    </div>
-    <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),400)}</script>
-  </body></html>`;
-
-  const w = window.open("", "_blank", "width=380,height=700");
-  if (w) {
-    w.document.write(html);
-    w.document.close();
-  }
-};
-
 /** ===== micro toast ===== */
 type Toast = { type: "success" | "error" | "info"; msg: string } | null;
+
 const toastStyle = (t: Toast) => {
   if (!t) return "";
   if (t.type === "success") return "bg-emerald-600";
@@ -584,10 +256,10 @@ const QtyPill: React.FC<{
 /** ===== COMPONENTE ===== */
 type Mode = "mesa" | "llevar" | "recoger";
 
-const Manual: React.FC = () => {
-  // modo (mesa / llevar / recoger)
+const Manual: React.FC<ManualProps> = ({ onOrderSaved }) => {
+  // modo
   const [mode, setMode] = useState<Mode>("mesa");
-  const isTakeaway = mode !== "mesa"; // suma adicional llevar (icopor)
+  const isTakeaway = mode !== "mesa";
   const hasDelivery = mode === "llevar";
 
   // menu
@@ -610,7 +282,7 @@ const Manual: React.FC = () => {
   const [cartOpenMobile, setCartOpenMobile] = useState(false);
   const [detalleOpen, setDetalleOpen] = useState(false);
 
-  // comentario modal (nuevo)
+  // comentario modal
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [noteModalItemId, setNoteModalItemId] = useState<string | null>(null);
 
@@ -624,7 +296,7 @@ const Manual: React.FC = () => {
     setNoteModalItemId(null);
   }, []);
 
-  // sticky categories under header (nuevo)
+  // sticky categories under header
   const headerRef = useRef<HTMLDivElement | null>(null);
   const [headerH, setHeaderH] = useState(0);
 
@@ -637,6 +309,7 @@ const Manual: React.FC = () => {
 
     const RO = (window as any).ResizeObserver as any;
     let ro: any = null;
+
     if (RO) {
       ro = new RO(() => update());
       ro.observe(el);
@@ -656,7 +329,7 @@ const Manual: React.FC = () => {
   const [numero, setNumero] = useState("");
   const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia">("efectivo");
 
-  // dirección (según modo)
+  // dirección
   const [mesaLugar, setMesaLugar] = useState("");
   const [barrio, setBarrio] = useState("");
   const [direccionExacta, setDireccionExacta] = useState("");
@@ -664,7 +337,7 @@ const Manual: React.FC = () => {
 
   const [valorDomicilio, setValorDomicilio] = useState(0);
 
-  // toast (con cleanup)
+  // toast
   const [toast, setToast] = useState<Toast>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -681,10 +354,11 @@ const Manual: React.FC = () => {
     };
   }, []);
 
-  /** fetch menu (con AbortController) */
+  /** fetch menu */
   const fetchMenu = useCallback(async () => {
     const controller = new AbortController();
     setLoadingMenu(true);
+
     try {
       const res = await fetch(MENU_FULL_API, { signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -699,13 +373,15 @@ const Manual: React.FC = () => {
     } finally {
       setLoadingMenu(false);
     }
+
     return () => controller.abort();
   }, [showToast]);
 
-  /** fetch domicilios (con AbortController) */
+  /** fetch domicilios */
   const fetchDomicilios = useCallback(async () => {
     const controller = new AbortController();
     setLoadingDomicilios(true);
+
     try {
       const res = await fetch(DOMICILIOS_API, { signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -714,6 +390,7 @@ const Manual: React.FC = () => {
       const clean = arr
         .filter((x) => x && x.barrio)
         .map((x) => ({ barrio: String(x.barrio), precio: Number(x.precio) || 0 }));
+
       clean.sort((a, b) => a.barrio.localeCompare(b.barrio, "es"));
       setDomicilios(clean);
     } catch (e: any) {
@@ -723,6 +400,7 @@ const Manual: React.FC = () => {
     } finally {
       setLoadingDomicilios(false);
     }
+
     return () => controller.abort();
   }, [showToast]);
 
@@ -730,7 +408,6 @@ const Manual: React.FC = () => {
     fetchMenu();
   }, [fetchMenu]);
 
-  // Lazy-load domicilios cuando entras a delivery
   useEffect(() => {
     if (mode === "llevar" && domicilios.length === 0 && !loadingDomicilios) {
       fetchDomicilios();
@@ -764,9 +441,17 @@ const Manual: React.FC = () => {
     const groups: MenuGroup[] = [];
     const processed = new Set<string>();
 
-    const almuerzos = filteredMenuItems.filter((i) => (i.nombre || "").toLowerCase().startsWith("almuerzo"));
+    const almuerzos = filteredMenuItems.filter((i) =>
+      (i.nombre || "").toLowerCase().startsWith("almuerzo")
+    );
+
     if (almuerzos.length) {
-      groups.push({ id: "grp-almuerzos", type: "almuerzo", title: "Almuerzos del Día", items: almuerzos });
+      groups.push({
+        id: "grp-almuerzos",
+        type: "almuerzo",
+        title: "Almuerzos del Día",
+        items: almuerzos,
+      });
       almuerzos.forEach((i) => processed.add(String(i.id)));
     }
 
@@ -788,8 +473,9 @@ const Manual: React.FC = () => {
     });
 
     filteredMenuItems.forEach((item) => {
-      if (!processed.has(String(item.id)))
+      if (!processed.has(String(item.id))) {
         groups.push({ id: String(item.id), type: "single", title: item.nombre, items: [item] });
+      }
     });
 
     return groups;
@@ -808,11 +494,13 @@ const Manual: React.FC = () => {
       prev.map((ci) => {
         const mi = menuById.get(ci.id);
         const base = mi ? Number(mi.valor) || 0 : ci.baseValor;
-        const extra = mi && mi.para_llevar ? Number(mi.precio_adicional_llevar) || 0 : ci.extraLlevar;
+        const extra =
+          mi && mi.para_llevar ? Number(mi.precio_adicional_llevar) || 0 : ci.extraLlevar;
         const priceUnit = base + (isTakeaway ? extra : 0);
         return { ...ci, baseValor: base, extraLlevar: extra, priceUnit };
       })
     );
+
     if (!hasDelivery) setValorDomicilio(0);
   }, [isTakeaway, hasDelivery, menuById]);
 
@@ -823,18 +511,18 @@ const Manual: React.FC = () => {
   );
 
   const totalFinal = useMemo(
-    () => totalRestaurante + (hasDelivery ? (Number(valorDomicilio) || 0) : 0),
+    () => totalRestaurante + (hasDelivery ? Number(valorDomicilio) || 0 : 0),
     [totalRestaurante, valorDomicilio, hasDelivery]
   );
 
-  /** qty map (para mostrar contador en el menú) */
+  /** qty map */
   const qtyById = useMemo(() => {
     const m: Record<string, number> = {};
     cart.forEach((c) => (m[c.id] = (m[c.id] || 0) + (c.quantity || 0)));
     return m;
   }, [cart]);
 
-  // notas por id (nuevo)
+  /** note map */
   const noteById = useMemo(() => {
     const m: Record<string, string> = {};
     cart.forEach((c) => (m[c.id] = c.notes || ""));
@@ -845,10 +533,11 @@ const Manual: React.FC = () => {
 
   const cartCount = useMemo(() => cart.reduce((acc, it) => acc + (it.quantity || 0), 0), [cart]);
 
-  /** cart ops (callbacks estables) */
+  /** cart ops */
   const addToCart = useCallback(
     (item: MenuItemFull) => {
       if (!item.disponible) return;
+
       const id = String(item.id);
       const baseValor = Number(item.valor) || 0;
       const extra = item.para_llevar ? Number(item.precio_adicional_llevar) || 0 : 0;
@@ -856,30 +545,59 @@ const Manual: React.FC = () => {
 
       setCart((prev) => {
         const exists = prev.find((x) => x.id === id);
-        if (exists) return prev.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x));
-        return [...prev, { id, name: item.nombre, quantity: 1, baseValor, extraLlevar: extra, priceUnit, notes: "" }];
+        if (exists) {
+          return prev.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x));
+        }
+        return [
+          ...prev,
+          {
+            id,
+            name: item.nombre,
+            quantity: 1,
+            baseValor,
+            extraLlevar: extra,
+            priceUnit,
+            notes: "",
+          },
+        ];
       });
     },
     [isTakeaway]
   );
 
-  const inc = useCallback((id: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x))), []);
+  const inc = useCallback(
+    (id: string) =>
+      setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity + 1 } : x))),
+    []
+  );
+
   const dec = useCallback(
-    (id: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, quantity: x.quantity - 1 } : x)).filter((x) => x.quantity > 0)),
+    (id: string) =>
+      setCart((p) =>
+        p
+          .map((x) => (x.id === id ? { ...x, quantity: x.quantity - 1 } : x))
+          .filter((x) => x.quantity > 0)
+      ),
     []
   );
 
   const remove = useCallback((id: string) => setCart((p) => p.filter((x) => x.id !== id)), []);
-  const setNote = useCallback((id: string, note: string) => setCart((p) => p.map((x) => (x.id === id ? { ...x, notes: note } : x))), []);
+  const setNote = useCallback(
+    (id: string, note: string) =>
+      setCart((p) => p.map((x) => (x.id === id ? { ...x, notes: note } : x))),
+    []
+  );
   const clearAll = useCallback(() => setCart([]), []);
-  const toggleGroup = useCallback((id: string) => setExpanded((p) => ({ ...p, [id]: !(p[id] ?? true) })), []);
+  const toggleGroup = useCallback(
+    (id: string) => setExpanded((p) => ({ ...p, [id]: !(p[id] ?? true) })),
+    []
+  );
 
   /** barrio autocomplete */
   const barrioSuggestions = useMemo(() => {
     const q = norm(barrio);
-    const base = domicilios;
-    if (!q) return base.slice(0, 18);
-    return base.filter((d) => norm(d.barrio).includes(q)).slice(0, 18);
+    if (!q) return domicilios.slice(0, 18);
+    return domicilios.filter((d) => norm(d.barrio).includes(q)).slice(0, 18);
   }, [barrio, domicilios]);
 
   const exactMatch = useMemo(() => {
@@ -889,8 +607,11 @@ const Manual: React.FC = () => {
   }, [barrio, domicilios]);
 
   useEffect(() => {
-    // si escribe un barrio exacto, autollenar domicilio
-    if (hasDelivery && exactMatch && (Number(valorDomicilio) || 0) !== (Number(exactMatch.precio) || 0)) {
+    if (
+      hasDelivery &&
+      exactMatch &&
+      (Number(valorDomicilio) || 0) !== (Number(exactMatch.precio) || 0)
+    ) {
       setValorDomicilio(Number(exactMatch.precio) || 0);
     }
   }, [hasDelivery, exactMatch, valorDomicilio]);
@@ -910,121 +631,103 @@ const Manual: React.FC = () => {
     barrioCloseTimer.current = window.setTimeout(() => setBarrioOpen(false), 120);
   }, []);
 
-  /** Preview detalle */
+  /** preview detalle */
   const detallePreview = useMemo(() => {
     const raw = serializeCartToDetalle(cart);
     const parsed = parseDetailsForView(raw);
     return { raw, parsed };
   }, [cart]);
 
-  /** Dirección final (un solo campo) */
+  /** dirección final */
   const buildDireccionFinal = useCallback(() => {
     if (mode === "mesa") return mesaLugar.trim() || "MESA";
+
     if (mode === "recoger") {
       const x = recogerEn.trim();
       return x ? `RECOGER: ${x}` : "RECOGER";
     }
-    // llevar: "direccion exacta (barrio)"
+
     const d = direccionExacta.trim();
     const b = barrio.trim();
+
     if (d && b) return `${d} (${b})`;
     if (d) return b ? `${d} (${b})` : d;
     if (b) return `(${b})`;
     return "PARA LLEVAR";
   }, [mode, mesaLugar, recogerEn, direccionExacta, barrio]);
 
-  /** save order */
-  const saveOrder = useCallback(
-    async (opts: { print: boolean }) => {
-      if (!cart.length || totalRestaurante <= 0) {
-        showToast({ type: "info", msg: "Agrega productos para guardar." });
-        return;
-      }
+  /** guardar pedido */
+  const saveOrder = useCallback(async () => {
+    if (!cart.length || totalRestaurante <= 0) {
+      showToast({ type: "info", msg: "Agrega productos para guardar." });
+      return;
+    }
 
-      const numeroFinal = (numero.trim() || makeNumeroFallback()).trim();
-      const nombreFinal = nombre.trim() || "Cliente";
-      const direccionFinal = buildDireccionFinal();
-      const detalle = serializeCartToDetalle(cart);
-      const domicilio = hasDelivery ? (Number(valorDomicilio) || 0) : 0;
+    const numeroFinal = (numero.trim() || makeNumeroFallback()).trim();
+    const nombreFinal = nombre.trim() || "Cliente";
+    const direccionFinal = buildDireccionFinal();
+    const detalle = serializeCartToDetalle(cart);
+    const domicilio = hasDelivery ? Number(valorDomicilio) || 0 : 0;
 
-      const payload: any = {
-        nombre: nombreFinal,
-        direccion: direccionFinal,
-        "detalle pedido": detalle,
-        valor_restaurante: totalRestaurante,
-        valor_domicilio: domicilio,
-        metodo_pago: metodoPago,
-        estado: opts.print ? "impreso" : "pidiendo",
-        numero: numeroFinal,
-      };
+    const payload: any = {
+      nombre: nombreFinal,
+      direccion: direccionFinal,
+      "detalle pedido": detalle,
+      valor_restaurante: totalRestaurante,
+      valor_domicilio: domicilio,
+      metodo_pago: metodoPago,
+      estado: "pidiendo",
+      numero: numeroFinal,
+    };
 
-      try {
-        const res = await fetch(MAKE_ORDER_API, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    try {
+      const res = await fetch(MAKE_ORDER_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-        showToast({ type: "success", msg: opts.print ? "Guardado e imprimiendo…" : "Pedido guardado." });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        // limpiar
-        clearAll();
-        setNombre("");
-        setNumero("");
-        setMesaLugar("");
-        setBarrio("");
-        setDireccionExacta("");
-        setRecogerEn("");
-        setValorDomicilio(0);
-        setMetodoPago("efectivo");
-        setCartOpenMobile(false);
-        closeNoteModal();
+      showToast({ type: "success", msg: "Pedido guardado." });
 
-        if (opts.print) {
-          await printTicket({
-            row_number: 0,
-            fecha: new Date().toISOString(),
-            nombre: nombreFinal,
-            numero: numeroFinal,
-            direccion: direccionFinal,
-            detalle_pedido: detalle,
-            valor_restaurante: totalRestaurante,
-            valor_domicilio: domicilio,
-            metodo_pago: metodoPago,
-            estado: "impreso",
-          });
-        }
-      } catch (e) {
-        console.error(e);
-        showToast({ type: "error", msg: "No se pudo guardar el pedido." });
-      }
-    },
-    [
-      cart,
-      totalRestaurante,
-      numero,
-      nombre,
-      buildDireccionFinal,
-      hasDelivery,
-      valorDomicilio,
-      metodoPago,
-      clearAll,
-      showToast,
-      closeNoteModal,
-    ]
-  );
+      clearAll();
+      setNombre("");
+      setNumero("");
+      setMesaLugar("");
+      setBarrio("");
+      setDireccionExacta("");
+      setRecogerEn("");
+      setValorDomicilio(0);
+      setMetodoPago("efectivo");
+      setCartOpenMobile(false);
+      closeNoteModal();
 
-  /** Atajos teclado (velocidad POS)
-   *  Enter: Guardar (si no estás escribiendo en input)
-   *  Shift+Enter: Imprimir
-   *  Esc: cerrar caja móvil / cerrar sugerencias barrio / cerrar modal comentario
-   *  Ctrl/Cmd+S: Guardar
-   *  Ctrl/Cmd+P: Imprimir (evita print del browser)
-   */
+      setTimeout(() => {
+        onOrderSaved?.();
+      }, 250);
+    } catch (e) {
+      console.error(e);
+      showToast({ type: "error", msg: "No se pudo guardar el pedido." });
+    }
+  }, [
+    cart,
+    totalRestaurante,
+    numero,
+    nombre,
+    buildDireccionFinal,
+    hasDelivery,
+    valorDomicilio,
+    metodoPago,
+    clearAll,
+    showToast,
+    closeNoteModal,
+    onOrderSaved,
+  ]);
+
+  /** Atajos teclado */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Escape SIEMPRE funciona (aunque estés escribiendo)
       if (e.key === "Escape") {
         if (noteModalOpen) {
           e.preventDefault();
@@ -1042,20 +745,13 @@ const Manual: React.FC = () => {
 
       if (isMod && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        saveOrder({ print: false });
-        return;
-      }
-      if (isMod && e.key.toLowerCase() === "p") {
-        e.preventDefault();
-        saveOrder({ print: true });
+        saveOrder();
         return;
       }
 
       if (e.key === "Enter") {
-        // enter: guardar, shift+enter: imprimir
         e.preventDefault();
-        if (e.shiftKey) saveOrder({ print: true });
-        else saveOrder({ print: false });
+        saveOrder();
       }
     };
 
@@ -1127,7 +823,6 @@ const Manual: React.FC = () => {
 
   return (
     <div className="relative bg-slate-50">
-      {/* TOAST */}
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[90]">
           <div className={`${toastStyle(toast)} text-white px-4 py-2 rounded-xl shadow-xl text-sm font-bold`}>
@@ -1136,11 +831,10 @@ const Manual: React.FC = () => {
         </div>
       )}
 
-      {/* HEADER MAIN (sticky) */}
+      {/* HEADER MAIN */}
       <div ref={headerRef} className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-3 [@media(max-height:820px)]:py-2">
           <div className="flex flex-col lg:flex-row gap-3 [@media(max-height:820px)]:gap-2 justify-between lg:items-center">
-            {/* left: title + search */}
             <div className="flex flex-col sm:flex-row gap-3 [@media(max-height:820px)]:gap-2 sm:items-center w-full">
               <div className="flex items-center gap-2 shrink-0">
                 <div className="w-9 h-9 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center">
@@ -1149,7 +843,7 @@ const Manual: React.FC = () => {
                 <div>
                   <div className="font-black text-slate-900 leading-tight">Pedido Manual</div>
                   <div className="text-[11px] text-slate-500 leading-tight">
-                    Atajos: Enter=Guardar • Shift+Enter=Imprimir • Ctrl+S / Ctrl+P
+                    Atajos: Enter=Guardar • Ctrl+S
                   </div>
                 </div>
               </div>
@@ -1177,7 +871,6 @@ const Manual: React.FC = () => {
               </div>
             </div>
 
-            {/* right: mode + mobile cart */}
             <div className="flex gap-2 items-center w-full lg:w-auto">
               <ModePill />
 
@@ -1193,7 +886,7 @@ const Manual: React.FC = () => {
         </div>
       </div>
 
-      {/* CATEGORÍAS (sticky, siempre visible) */}
+      {/* CATEGORÍAS */}
       <div className="sticky z-40 bg-white/95 backdrop-blur border-b border-slate-200" style={{ top: headerH }}>
         <div className="max-w-[1400px] mx-auto px-3 sm:px-4 py-2">
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -1285,7 +978,6 @@ const Manual: React.FC = () => {
                                   />
                                 </div>
 
-                                {/* Botón comentario (nuevo) */}
                                 {qty > 0 && (
                                   <button
                                     onClick={(e) => {
@@ -1374,7 +1066,6 @@ const Manual: React.FC = () => {
                                     </div>
                                   </div>
 
-                                  {/* Botón comentario (nuevo) */}
                                   {qty > 0 && (
                                     <button
                                       onClick={(e) => {
@@ -1425,11 +1116,16 @@ const Manual: React.FC = () => {
                         </div>
 
                         <div className="shrink-0">
-                          <QtyPill qty={qty} disabled={disabled} compact onPlus={() => addToCart(item)} onMinus={() => dec(id)} />
+                          <QtyPill
+                            qty={qty}
+                            disabled={disabled}
+                            compact
+                            onPlus={() => addToCart(item)}
+                            onMinus={() => dec(id)}
+                          />
                         </div>
                       </div>
 
-                      {/* Botón comentario (nuevo) */}
                       {qty > 0 && (
                         <button
                           onClick={(e) => {
@@ -1458,7 +1154,7 @@ const Manual: React.FC = () => {
             )}
           </section>
 
-          {/* CART (desktop/tablet) */}
+          {/* CART DESKTOP */}
           <aside
             className="
               hidden lg:flex bg-white border border-slate-200 rounded-3xl overflow-hidden flex-col
@@ -1467,7 +1163,6 @@ const Manual: React.FC = () => {
               [@media(max-height:820px)]:min-h-[calc(100vh-120px)]
             "
           >
-            {/* header */}
             <div className="p-4 [@media(max-height:820px)]:p-3 border-b border-slate-200">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1488,8 +1183,7 @@ const Manual: React.FC = () => {
                 )}
               </div>
 
-              {/* acciones arriba (sin scroll) */}
-              <div className="mt-3 [@media(max-height:820px)]:mt-2 grid grid-cols-3 gap-2">
+              <div className="mt-3 [@media(max-height:820px)]:mt-2 grid grid-cols-2 gap-2">
                 <button
                   onClick={clearAll}
                   className="py-2.5 rounded-2xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
@@ -1499,23 +1193,14 @@ const Manual: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => saveOrder({ print: false })}
+                  onClick={saveOrder}
                   className="py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
                   title="Guardar (Enter / Ctrl+S)"
                 >
                   <Save size={18} /> Guardar
                 </button>
-
-                <button
-                  onClick={() => saveOrder({ print: true })}
-                  className="py-2.5 rounded-2xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
-                  title="Guardar e imprimir (Shift+Enter / Ctrl+P)"
-                >
-                  <Printer size={18} /> Imprimir
-                </button>
               </div>
 
-              {/* totales arriba también */}
               <div className="mt-3 [@media(max-height:820px)]:mt-2 bg-slate-50 border border-slate-200 rounded-2xl p-3 [@media(max-height:820px)]:p-2.5">
                 <div className="flex justify-between items-center">
                   <div>
@@ -1535,7 +1220,6 @@ const Manual: React.FC = () => {
                 </div>
               </div>
 
-              {/* datos */}
               <div className="mt-4 [@media(max-height:820px)]:mt-3 grid gap-2">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
@@ -1558,7 +1242,6 @@ const Manual: React.FC = () => {
                   </div>
                 </div>
 
-                {/* dirección por modo */}
                 {mode === "mesa" && (
                   <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
                     <MapPin size={14} className="text-slate-400 mr-2" />
@@ -1585,7 +1268,6 @@ const Manual: React.FC = () => {
 
                 {mode === "llevar" && (
                   <>
-                    {/* Barrio autocomplete */}
                     <div className="relative">
                       <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
                         <MapPin size={14} className="text-slate-400 mr-2" />
@@ -1606,11 +1288,11 @@ const Manual: React.FC = () => {
                             <span className="text-[10px] font-extrabold text-slate-400">...</span>
                           ) : exactMatch ? (
                             <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded-full">
-                              {money(exactMatch.precio)}
+                              ${exactMatch.precio.toLocaleString("es-CO")}
                             </span>
                           ) : (
                             <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200 px-2 py-1 rounded-full">
-                              {money(valorDomicilio || 0)}
+                              ${Number(valorDomicilio || 0).toLocaleString("es-CO")}
                             </span>
                           )}
                         </div>
@@ -1630,7 +1312,7 @@ const Manual: React.FC = () => {
                               >
                                 <span className="text-sm font-extrabold text-slate-900 truncate">{d.barrio}</span>
                                 <span className="text-[11px] font-black text-slate-700 whitespace-nowrap">
-                                  {money(d.precio)}
+                                  ${d.precio.toLocaleString("es-CO")}
                                 </span>
                               </button>
                             ))}
@@ -1639,7 +1321,6 @@ const Manual: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Dirección exacta */}
                     <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
                       <MessageSquare size={14} className="text-slate-400 mr-2" />
                       <input
@@ -1650,7 +1331,6 @@ const Manual: React.FC = () => {
                       />
                     </div>
 
-                    {/* ajuste manual de domicilio (opcional) */}
                     <div className="flex items-center bg-amber-50 rounded-2xl px-3 py-2 border border-amber-200">
                       <span className="text-[10px] font-extrabold text-amber-800 mr-2">Domicilio</span>
                       <input
@@ -1668,7 +1348,6 @@ const Manual: React.FC = () => {
                   </>
                 )}
 
-                {/* Pago */}
                 <div className="mt-1">
                   <div className="text-[11px] font-extrabold text-slate-600 mb-2 flex items-center gap-2">
                     <CreditCard size={14} />
@@ -1679,7 +1358,6 @@ const Manual: React.FC = () => {
               </div>
             </div>
 
-            {/* items */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50 [@media(max-height:820px)]:p-2 [@media(max-height:820px)]:space-y-1.5">
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
@@ -1749,14 +1427,17 @@ const Manual: React.FC = () => {
                     </div>
                   ))}
 
-                  {/* preview colapsable */}
                   <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
                     <button
                       onClick={() => setDetalleOpen((v) => !v)}
                       className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
                     >
                       <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
-                      {detalleOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+                      {detalleOpen ? (
+                        <ChevronUp size={16} className="text-slate-500" />
+                      ) : (
+                        <ChevronDown size={16} className="text-slate-500" />
+                      )}
                     </button>
                     {detalleOpen && (
                       <div className="p-3">
@@ -1773,7 +1454,7 @@ const Manual: React.FC = () => {
         </div>
       </div>
 
-      {/* ===== MOBILE: bottom bar + bottom sheet cart ===== */}
+      {/* MOBILE */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50">
         <div className="bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-2">
@@ -1810,8 +1491,7 @@ const Manual: React.FC = () => {
                   </button>
                 </div>
 
-                {/* acciones arriba en móvil */}
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     onClick={clearAll}
                     className="py-2.5 rounded-2xl bg-slate-100 text-slate-700 font-extrabold hover:bg-rose-50 hover:text-rose-700 transition-colors flex items-center justify-center"
@@ -1821,22 +1501,13 @@ const Manual: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => saveOrder({ print: false })}
+                    onClick={saveOrder}
                     className="py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950 transition-colors flex items-center justify-center gap-2"
                   >
                     <Save size={18} /> Guardar
                   </button>
-
-                  <button
-                    onClick={() => saveOrder({ print: true })}
-                    className="py-2.5 rounded-2xl bg-amber-600 text-white font-extrabold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
-                    title="Guardar e imprimir"
-                  >
-                    <Printer size={18} /> Imprimir
-                  </button>
                 </div>
 
-                {/* totales */}
                 <div className="mt-3 bg-slate-50 border border-slate-200 rounded-2xl p-3">
                   <div className="flex justify-between items-center">
                     <div>
@@ -1873,7 +1544,9 @@ const Manual: React.FC = () => {
                             <p className="text-[11px] text-slate-500 mt-1">
                               {formatPrice(item.priceUnit)} c/u
                               {isTakeaway && item.extraLlevar > 0 && (
-                                <span className="ml-2 text-amber-700 font-extrabold">(+{formatPrice(item.extraLlevar)} icopor)</span>
+                                <span className="ml-2 text-amber-700 font-extrabold">
+                                  (+{formatPrice(item.extraLlevar)} icopor)
+                                </span>
                               )}
                             </p>
                           </div>
@@ -1927,7 +1600,11 @@ const Manual: React.FC = () => {
                         className="w-full px-3 py-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100"
                       >
                         <div className="text-xs font-extrabold text-slate-900">Detalle que se enviará</div>
-                        {detalleOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+                        {detalleOpen ? (
+                          <ChevronUp size={16} className="text-slate-500" />
+                        ) : (
+                          <ChevronDown size={16} className="text-slate-500" />
+                        )}
                       </button>
                       {detalleOpen && (
                         <div className="p-3">
@@ -1954,7 +1631,7 @@ const Manual: React.FC = () => {
         )}
       </div>
 
-      {/* ===== MODAL COMENTARIO (nuevo) ===== */}
+      {/* MODAL COMENTARIO */}
       {noteModalOpen && noteModalItemId && (
         <div className="fixed inset-0 z-[95]">
           <button className="absolute inset-0 bg-black/40" onClick={closeNoteModal} aria-label="Cerrar comentario" />
@@ -1971,7 +1648,9 @@ const Manual: React.FC = () => {
             </div>
 
             <div className="p-4">
-              <div className="text-[11px] text-slate-500 font-semibold mb-2">Nota para el producto (ej: sin ensalada, con ají)</div>
+              <div className="text-[11px] text-slate-500 font-semibold mb-2">
+                Nota para el producto (ej: sin ensalada, con ají)
+              </div>
 
               <div className="relative">
                 <MessageSquare size={14} className="absolute left-3 top-3 text-slate-400" />
@@ -1991,7 +1670,10 @@ const Manual: React.FC = () => {
                 >
                   Limpiar
                 </button>
-                <button onClick={closeNoteModal} className="py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950">
+                <button
+                  onClick={closeNoteModal}
+                  className="py-2.5 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-950"
+                >
                   Listo
                 </button>
               </div>
@@ -2000,11 +1682,9 @@ const Manual: React.FC = () => {
         </div>
       )}
 
-      {/* spacing para que el bottom bar no tape contenido */}
       <div className="lg:hidden h-[84px]" />
     </div>
   );
 };
 
 export default Manual;
-

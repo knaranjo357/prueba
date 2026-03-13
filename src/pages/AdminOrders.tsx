@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, ArrowUpDown } from 'lucide-react';
 import TarjetaPedido, { Order, CartItem, MenuItem } from './TarjetaPedido';
+import JsBarcode from 'jsbarcode';
 
 /** API ENDPOINTS */
 const ORDERS_API = 'https://n8n.alliasoft.com/webhook/luis-res/pedidos';
@@ -170,23 +171,112 @@ const encodeCP1252 = (str: string): number[] => {
   return bytes;
 };
 const isAndroid = (): boolean => /Android/i.test(navigator.userAgent || '');
-const buildEscposFromLines = (lines: string[]): number[] => {
+const buildEscposFromLines = (lines: string[], barcodeValue?: string): number[] => {
   const bytes: number[] = [];
-  bytes.push(0x1B, 0x40); bytes.push(0x1B, 0x74, 0x10); bytes.push(0x1B, 0x61, 0x00); bytes.push(0x1D, 0x21, 0x01);
+
+  // Init
+  bytes.push(0x1B, 0x40);
+
+  // Tabla de caracteres
+  bytes.push(0x1B, 0x74, 0x10);
+
+  // Alineación izquierda
+  bytes.push(0x1B, 0x61, 0x00);
+
+  // Tamaño normal
+  bytes.push(0x1D, 0x21, 0x01);
+
   const body = lines.join('\n') + '\n';
   bytes.push(...encodeCP1252(body));
-  bytes.push(0x0A, 0x0A, 0x0A); bytes.push(0x1D, 0x56, 0x00);
+
+  if (barcodeValue) {
+    bytes.push(0x0A);
+    bytes.push(...buildEscposBarcode(barcodeValue));
+  }
+
+  bytes.push(0x0A, 0x0A, 0x0A);
+
+  // Corte
+  bytes.push(0x1D, 0x56, 0x00);
+
   return bytes;
 };
-const sendToRawBT = async (ticketLines: string[]): Promise<void> => {
+
+const sendToRawBT = async (ticketLines: string[], barcodeValue?: string): Promise<void> => {
   if (!isAndroid()) throw new Error('Requiere Android con RawBT.');
-  const escposBytes = buildEscposFromLines(ticketLines);
+
+  const escposBytes = buildEscposFromLines(ticketLines, barcodeValue);
   const base64 = bytesToBase64(escposBytes);
   const url = `rawbt:base64,${base64}`;
-  try { (window as any).location.href = url; return; } catch {}
-  try { const a = document.createElement('a'); a.href = url; a.rel = 'noopener noreferrer'; document.body.appendChild(a); a.click(); document.body.removeChild(a); return; } catch {}
+
+  try {
+    (window as any).location.href = url;
+    return;
+  } catch {}
+
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  } catch {}
+
   throw new Error('No se pudo invocar RawBT.');
 };
+
+
+const buildBarcodeSvg = (value: string): string => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+
+  JsBarcode(svg, value, {
+    format: 'CODE128',
+    displayValue: false,
+    height: 26,
+    width: 1.15,
+    margin: 0,
+  });
+
+  return new XMLSerializer().serializeToString(svg);
+};
+
+
+const buildEscposBarcode = (value: string): number[] => {
+  const clean = String(value || '').trim();
+  if (!clean) return [];
+
+  const data = `{B${clean}`; // Code Set B para CODE128
+  const encoded = encodeCP1252(data);
+
+  const bytes: number[] = [];
+
+  // Centrar barcode
+  bytes.push(0x1B, 0x61, 0x01);
+
+  // Texto legible debajo
+  bytes.push(0x1D, 0x48, 0x02);
+
+  // Ancho barras
+  bytes.push(0x1D, 0x77, 0x02);
+
+  // Alto barras
+  bytes.push(0x1D, 0x68, 80);
+
+  // CODE128
+  bytes.push(0x1D, 0x6B, 0x49, encoded.length, ...encoded);
+
+  bytes.push(0x0A);
+  bytes.push(...encodeCP1252(`Pedido #${clean}`));
+  bytes.push(0x0A);
+
+  // Volver alineación izquierda
+  bytes.push(0x1B, 0x61, 0x00);
+
+  return bytes;
+};
+
 
 // Helper para transformar Carrito de Edición a String
 const serializeCartToDetails = (items: CartItem[]): string => {
@@ -370,6 +460,7 @@ const OrdersTab: React.FC = () => {
   const printOrder = async (order: Order) => {
     const customerName = sanitizeForTicket(order.nombre || 'Cliente');
     const customerPhone = cleanPhone(order.numero ?? "");
+    const barcodeValue = String(order.row_number);
     const items = parseDetails(order["detalle pedido"]);
     const subtotal = order.valor_restaurante || 0;
     const domicilio = order.valor_domicilio || 0;
@@ -413,7 +504,8 @@ const OrdersTab: React.FC = () => {
     if (isAndroid()) {
       try {
         const allLines = [...before, ...detail, ...after];
-        await sendToRawBT(allLines);
+        await sendToRawBT(allLines, barcodeValue);
+
         
         // Si funcionó, actualizar estado
         const updated = { ...order, estado: 'impreso' };
@@ -438,7 +530,7 @@ const OrdersTab: React.FC = () => {
         <div class="price">${esc(money(priceNum))}</div>
       </div>
     `).join('');
-
+    const barcodeSvg = buildBarcodeSvg(barcodeValue);
     const innerHtml = `
       <div class="ticket">
         <div class="header">
@@ -469,6 +561,9 @@ const OrdersTab: React.FC = () => {
         </div>
         <div class="hr"></div>
         <div class="footer">¡Gracias por su compra!</div>
+        <div class="barcode-block">
+          ${barcodeSvg}
+        </div>
       </div>
     `;
 
@@ -508,6 +603,20 @@ const OrdersTab: React.FC = () => {
             .totals .row .val { white-space: nowrap; text-align: right; }
             .totals .row.strong { font-weight: 800; }
             .footer { text-align: center; font-size: var(--fs-general); line-height: var(--lh); font-weight: 600; }
+            .barcode-block {
+              margin-top: 3mm;
+              padding-top: 2mm;
+              text-align: center;
+              border-top: 1px dashed #000;
+            }
+
+            .barcode-block svg {
+              width: 48mm;
+              max-width: 48mm;
+              height: 14mm;
+              display: block;
+              margin: 0 auto;
+            }
           </style>
         </head>
         <body>

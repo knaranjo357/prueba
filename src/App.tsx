@@ -8,6 +8,7 @@ import Footer from './components/Footer';
 import Kitchen from './pages/Kitchen';
 import Despacho from './pages/Despacho';
 import Admin from './pages/Admin';
+import ScannerEnCaminoPage from './pages/ScannerEnCaminoPage';
 
 function App() {
   return (
@@ -25,6 +26,8 @@ function App() {
             </CartProvider>
           </MenuProvider>
         } />
+        <Route path="/scan" element={<ScannerEnCaminoPage />} />
+
         {/* ----------------------- */}
 
         <Route path="/" element={

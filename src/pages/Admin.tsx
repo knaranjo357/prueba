@@ -65,7 +65,7 @@ const TABS_CONFIG: TabDef[] = [
     id: 'orders', 
     label: 'Pedidos', // Texto corto para mobile
     icon: <ShoppingBag size={24} />, 
-    roles: ['SUPER_ADMIN', 'WPP_CFG'] 
+    roles: ['SUPER_ADMIN', 'WPP_CFG', 'MESA_MENU'] 
   },
   { 
     id: 'dictado', 
@@ -98,12 +98,12 @@ const TABS_CONFIG: TabDef[] = [
     icon: <Settings size={24} />, 
     roles: ['SUPER_ADMIN', 'WPP_CFG'] 
   },
-  // { 
-  //   id: 'resultados', 
-  //   label: 'Reportes', 
-  //   icon: <BarChart3 size={24} />, 
-  //   roles: ['SUPER_ADMIN'] 
-  // },
+  { 
+    id: 'resultados', 
+    label: 'Reportes', 
+    icon: <BarChart3 size={24} />, 
+    roles: ['SUPER_ADMIN'] 
+  },
 ];
 
 // IDs que queremos mostrar siempre en la barra inferior (Prioridad)
@@ -290,7 +290,9 @@ const Admin: React.FC = () => {
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6 animate-in fade-in duration-500">
         {activeTab === 'orders' && allAvailable.some(t => t.id === 'orders') && <OrdersTab />}
         {/* {activeTab === 'dictado' && allAvailable.some(t => t.id === 'dictado') && <DictadoTab meseroName={user.name} />} */}
-        {activeTab === 'dictado' && allAvailable.some(t => t.id === 'dictado') && <Manual />}
+        {activeTab === 'dictado' && allAvailable.some(t => t.id === 'dictado') && (
+          <Manual onOrderSaved={() => setActiveTab('orders')} />
+        )}     
         {activeTab === 'menu' && allAvailable.some(t => t.id === 'menu') && <MenuTab />}
         {activeTab === 'domicilios' && allAvailable.some(t => t.id === 'domicilios') && <DomiciliosTab />}
         {activeTab === 'clientes' && allAvailable.some(t => t.id === 'clientes') && <ClientesTab />}
