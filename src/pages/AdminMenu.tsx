@@ -1,487 +1,474 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Camera,
-  CheckCircle2,
-  RefreshCw,
-  AlertCircle,
-  Play,
-  Square,
-  Truck,
-} from "lucide-react";
-import {
-  Html5Qrcode,
-  Html5QrcodeSupportedFormats,
-  Html5QrcodeCameraScanConfig,
-} from "html5-qrcode";
+// src/pages/AdminMenu.tsx
+import React, { useEffect, useMemo, useState } from 'react';
+import { RefreshCw, Search, X as XIcon, Tag, UtensilsCrossed, Filter } from 'lucide-react';
+import { fetchMenuItems } from '../api/menuApi';
+import { MenuItem } from '../types';
+import { formatPrice } from '../utils/dateUtils';
 
-const ORDERS_API = "https://n8n.alliasoft.com/webhook/luis-res/pedidos";
-const SCANNER_REGION_ID = "scanner-en-camino-reader";
+/** APIs */
+const MENU_API = 'https://n8n.alliasoft.com/webhook/luis-res/menu';
 
-type Order = {
-  row_number: number;
-  fecha?: string;
-  nombre?: string;
-  numero?: string | number;
-  direccion?: string;
-  "detalle pedido"?: string;
-  detalle_pedido?: string;
-  valor_restaurante?: number;
-  valor_domicilio?: number;
-  metodo_pago?: string;
-  estado?: string;
-};
+/** Tipos */
+type MenuItemWithRow = MenuItem & { row_number?: number };
 
-type ScanLog = {
-  id: string;
-  at: string;
-  code: string;
-  rowNumber?: number;
-  status: "ok" | "error" | "info";
-  message: string;
-};
+const normalizeText = (text: string = '') =>
+  text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
 
-const barcodeFormats = [
-  Html5QrcodeSupportedFormats.QR_CODE,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
+const ALMUERZO_EXTRA_NAMES = [
+  'porcion principio del dia',
+  'porcion arroz blanco',
+  'porcion yuca al vapor',
+  'porcion papa al vapor',
+  'porcion arroz con verduras',
+  'sopa del dia',
+  'media sopa del dia',
 ];
 
-const formatTime = (date = new Date()) =>
-  date.toLocaleTimeString("es-CO", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+const ALMUERZO_EXTRA_SET = new Set(ALMUERZO_EXTRA_NAMES.map(normalizeText));
 
-const extractRowNumber = (raw: string): number | null => {
-  const text = String(raw || "").trim();
-  if (!text) return null;
+const MenuTab: React.FC = () => {
+  const [menuItems, setMenuItems] = useState<MenuItemWithRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [bulkUpdatingLunch, setBulkUpdatingLunch] = useState(false);
 
-  try {
-    const parsed = JSON.parse(text);
-    const candidates = [
-      parsed?.row_number,
-      parsed?.id,
-      parsed?.pedido_id,
-      parsed?.pedido?.row_number,
-      parsed?.pedido?.id,
-    ];
-
-    for (const value of candidates) {
-      const n = Number(value);
-      if (Number.isFinite(n) && n > 0) return n;
-    }
-  } catch {}
-
-  const onlyDigits = text.match(/^\d+$/);
-  if (onlyDigits) {
-    const n = Number(onlyDigits[0]);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
-
-  const labeled = text.match(/(?:pedido|order|id|row_number)[^\d]{0,8}(\d{1,10})/i);
-  if (labeled) {
-    const n = Number(labeled[1]);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
-
-  const anyNumber = text.match(/(\d{1,10})/);
-  if (anyNumber) {
-    const n = Number(anyNumber[1]);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
-
-  return null;
-};
-
-const buildFullPayload = (order: Order, newStatus: string) => ({
-  numero: order.numero ?? "",
-  nombre: order.nombre ?? "",
-  direccion: order.direccion ?? "",
-  detalle_pedido: order["detalle pedido"] ?? order.detalle_pedido ?? "",
-  valor_restaurante: order.valor_restaurante ?? 0,
-  valor_domicilio: order.valor_domicilio ?? 0,
-  metodo_pago: order.metodo_pago ?? "",
-  estado: newStatus,
-});
-
-const ScannerEnCaminoPage: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(false);
-  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
-  const [scannerActive, setScannerActive] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string>("Listo para escanear");
-  const [logs, setLogs] = useState<ScanLog[]>([]);
-
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const processedRef = useRef<Map<string, number>>(new Map());
-  const isStoppingRef = useRef(false);
-
-  const ordersMap = useMemo(() => {
-    const map = new Map<number, Order>();
-    orders.forEach((order) => {
-      const id = Number(order.row_number);
-      if (Number.isFinite(id) && id > 0) map.set(id, order);
-    });
-    return map;
-  }, [orders]);
-
-  const pushLog = useCallback((entry: Omit<ScanLog, "id" | "at">) => {
-    const row: ScanLog = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      at: formatTime(),
-      ...entry,
-    };
-    setLogs((prev) => [row, ...prev].slice(0, 12));
-  }, []);
-
-  const fetchOrders = useCallback(async () => {
-    setLoadingOrders(true);
-    try {
-      const res = await fetch(ORDERS_API);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setOrders(Array.isArray(data) ? data : []);
-      setStatus("Pedidos actualizados");
-    } catch (error) {
-      console.error(error);
-      setStatus("No se pudieron cargar los pedidos");
-      pushLog({ code: "", status: "error", message: "Error cargando pedidos" });
-    } finally {
-      setLoadingOrders(false);
-    }
-  }, [pushLog]);
-
-  const fetchCameras = useCallback(async () => {
-    try {
-      const list = await Html5Qrcode.getCameras();
-      setCameras(list);
-      if (!selectedCameraId && list.length) {
-        const preferred =
-          list.find((cam) => /back|rear|environment|trasera/i.test(cam.label)) ?? list[0];
-        setSelectedCameraId(preferred.id);
-      }
-    } catch (error) {
-      console.error(error);
-      setStatus("No se pudo acceder a la cámara");
-      pushLog({ code: "", status: "error", message: "No se encontraron cámaras" });
-    }
-  }, [pushLog, selectedCameraId]);
+  // Búsqueda / categoría
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
 
   useEffect(() => {
-    fetchOrders();
-    fetchCameras();
-  }, [fetchOrders, fetchCameras]);
+    forceFetchMenuItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const postStatusUpdate = useCallback(async (order: Order, newStatus: string) => {
-    const payload = buildFullPayload(order, newStatus);
-    const res = await fetch(ORDERS_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+  const isLunchNameItem = (item: MenuItemWithRow) =>
+    normalizeText(item.nombre || '').includes('almuerzo');
+
+  const isLunchExtraItem = (item: MenuItemWithRow) =>
+    ALMUERZO_EXTRA_SET.has(normalizeText(item.nombre || ''));
+
+  const isLunchCategoryItem = (item: MenuItemWithRow) =>
+    (item.categorias || []).some((c: string) => normalizeText(c) === 'almuerzo');
+
+  const isLunchGroupedItem = (item: MenuItemWithRow) =>
+    isLunchNameItem(item) || isLunchCategoryItem(item) || isLunchExtraItem(item);
+
+  const forceFetchMenuItems = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(MENU_API);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const items = await res.json();
+      setMenuItems(
+        (items as MenuItemWithRow[]).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+      );
+    } catch (error) {
+      console.error('Error fetching menu items:', error);
+      try {
+        const items = await fetchMenuItems();
+        setMenuItems(
+          (items as MenuItemWithRow[]).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        );
+      } catch (e) {
+        console.error('Fallback fetchMenuItems failed:', e);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const postAvailability = async (payload: {
+    row_number: number | null;
+    id: number | string;
+    disponible: boolean;
+  }) => {
+    const res = await fetch(MENU_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    if (!res.ok) throw new Error('No se pudo actualizar la disponibilidad');
+  };
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  }, []);
+  const updateMenuItemAvailability = async (item: MenuItemWithRow, nuevoValor: boolean) => {
+    const payload = {
+      row_number: item.row_number ?? null,
+      id: item.id,
+      disponible: nuevoValor,
+    };
 
-  const handleDecoded = useCallback(
-    async (decodedText: string) => {
-      if (busy) return;
-
-      const key = String(decodedText || "").trim();
-      if (!key) return;
-
-      const now = Date.now();
-      const last = processedRef.current.get(key) ?? 0;
-      if (now - last < 2500) return;
-      processedRef.current.set(key, now);
-
-      const rowNumber = extractRowNumber(key);
-      if (!rowNumber) {
-        setStatus("Código leído sin ID válido");
-        pushLog({ code: key, status: "error", message: "No pude extraer el número del pedido" });
-        return;
-      }
-
-      const order = ordersMap.get(rowNumber);
-      if (!order) {
-        setStatus(`Pedido #${rowNumber} no encontrado`);
-        pushLog({
-          code: key,
-          rowNumber,
-          status: "error",
-          message: `Pedido #${rowNumber} no existe en la lista actual`,
-        });
-        return;
-      }
-
-      if ((order.estado || "").toLowerCase().trim() === "en camino") {
-        setStatus(`Pedido #${rowNumber} ya estaba en camino`);
-        pushLog({
-          code: key,
-          rowNumber,
-          status: "info",
-          message: `Pedido #${rowNumber} ya estaba en camino`,
-        });
-        return;
-      }
-
-      setBusy(true);
-      setStatus(`Actualizando pedido #${rowNumber}...`);
-
-      try {
-        await postStatusUpdate(order, "en camino");
-        setOrders((prev) =>
-          prev.map((item) =>
-            Number(item.row_number) === rowNumber ? { ...item, estado: "en camino" } : item
-          )
-        );
-        setStatus(`Pedido #${rowNumber} marcado como en camino`);
-        pushLog({
-          code: key,
-          rowNumber,
-          status: "ok",
-          message: `Pedido #${rowNumber} actualizado a en camino`,
-        });
-
-        if (navigator.vibrate) navigator.vibrate(120);
-      } catch (error) {
-        console.error(error);
-        setStatus(`Error actualizando pedido #${rowNumber}`);
-        pushLog({
-          code: key,
-          rowNumber,
-          status: "error",
-          message: `Falló el POST del pedido #${rowNumber}`,
-        });
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, ordersMap, postStatusUpdate, pushLog]
-  );
-
-  const stopScanner = useCallback(async () => {
-    if (!scannerRef.current) return;
-    if (isStoppingRef.current) return;
-
-    isStoppingRef.current = true;
-    try {
-      const scanner = scannerRef.current;
-      const state = scanner.getState?.();
-      if (state === 2 || state === 3) {
-        await scanner.stop();
-      }
-      await scanner.clear();
-    } catch (error) {
-      console.warn("No se pudo detener limpiamente el scanner", error);
-    } finally {
-      scannerRef.current = null;
-      setScannerActive(false);
-      isStoppingRef.current = false;
-    }
-  }, []);
-
-  const startScanner = useCallback(async () => {
-    if (!selectedCameraId || scannerActive) return;
+    // Actualización optimista
+    setMenuItems(prev =>
+      prev.map(i => (String(i.id) === String(item.id) ? { ...i, disponible: nuevoValor } : i))
+    );
 
     try {
-      const scanner = new Html5Qrcode(SCANNER_REGION_ID, {
-        formatsToSupport: barcodeFormats,
-        verbose: false,
-      });
-
-      scannerRef.current = scanner;
-
-      const config: Html5QrcodeCameraScanConfig = {
-        fps: 10,
-        qrbox: { width: 260, height: 160 },
-        aspectRatio: 1.777778,
-        disableFlip: false,
-      };
-
-      await scanner.start(
-        selectedCameraId,
-        config,
-        (decodedText) => {
-          handleDecoded(decodedText);
-        },
-        () => {}
+      await postAvailability(payload);
+    } catch (err) {
+      console.error(err);
+      // Revertir si falla
+      setMenuItems(prev =>
+        prev.map(i => (String(i.id) === String(item.id) ? { ...i, disponible: !nuevoValor } : i))
       );
+      alert('No se pudo guardar el cambio. Intenta de nuevo.');
+    }
+  };
 
-      setScannerActive(true);
-      setStatus("Escáner activo");
+  const updateAllLunchAvailability = async (nuevoValor: boolean) => {
+    const lunchItems = menuItems.filter(isLunchGroupedItem);
+    if (!lunchItems.length) return;
+
+    const previousItems = menuItems;
+    const lunchIds = new Set(lunchItems.map(item => String(item.id)));
+
+    setBulkUpdatingLunch(true);
+
+    // Actualización optimista
+    setMenuItems(prev =>
+      prev.map(item =>
+        lunchIds.has(String(item.id)) ? { ...item, disponible: nuevoValor } : item
+      )
+    );
+
+    try {
+      await Promise.all(
+        lunchItems.map(item =>
+          postAvailability({
+            row_number: item.row_number ?? null,
+            id: item.id,
+            disponible: nuevoValor,
+          })
+        )
+      );
     } catch (error) {
       console.error(error);
-      setStatus("No se pudo iniciar el escáner");
-      pushLog({ code: "", status: "error", message: "Error iniciando cámara" });
-      await stopScanner();
+      setMenuItems(previousItems);
+      alert('No se pudieron actualizar todos los almuerzos. Se revirtieron los cambios.');
+    } finally {
+      setBulkUpdatingLunch(false);
     }
-  }, [handleDecoded, pushLog, scannerActive, selectedCameraId, stopScanner]);
+  };
 
-  useEffect(() => {
-    return () => {
-      stopScanner();
-    };
-  }, [stopScanner]);
+  const allCategories = useMemo(() => {
+    const set = new Set<string>();
+    menuItems.forEach((item) => {
+      (item.categorias || []).forEach((c: string) => set.add(c));
+    });
+    return ['Todas', ...Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))];
+  }, [menuItems]);
+
+  const lunchGroupedItems = useMemo(() => {
+    return menuItems.filter(isLunchGroupedItem);
+  }, [menuItems]);
+
+  const allLunchOff =
+    lunchGroupedItems.length > 0 && lunchGroupedItems.every(item => !item.disponible);
+
+  const visibleMenuItems = useMemo(() => {
+    const normalizedTerm = normalizeText(searchTerm);
+    const selectedCategoryNormalized = normalizeText(selectedCategory);
+
+    let filtered = menuItems.filter((item) => {
+      const inCategory =
+        selectedCategory === 'Todas'
+          ? true
+          : selectedCategoryNormalized === 'almuerzo'
+          ? isLunchGroupedItem(item)
+          : (item.categorias || []).some(
+              (c: string) => normalizeText(c) === selectedCategoryNormalized
+            );
+
+      const inName =
+        normalizedTerm === '' || normalizeText(item.nombre || '').includes(normalizedTerm);
+
+      return inCategory && inName;
+    });
+
+    // Cuando esté en categoría almuerzo:
+    // primero los almuerzos normales, luego los extras agregados
+    if (selectedCategoryNormalized === 'almuerzo') {
+      const extraOrderMap = ALMUERZO_EXTRA_NAMES.reduce<Record<string, number>>((acc, name, idx) => {
+        acc[normalizeText(name)] = idx;
+        return acc;
+      }, {});
+
+      filtered = [...filtered].sort((a, b) => {
+        const aIsExtra = isLunchExtraItem(a);
+        const bIsExtra = isLunchExtraItem(b);
+
+        if (aIsExtra && !bIsExtra) return 1;
+        if (!aIsExtra && bIsExtra) return -1;
+
+        if (aIsExtra && bIsExtra) {
+          return (
+            (extraOrderMap[normalizeText(a.nombre || '')] ?? 999) -
+            (extraOrderMap[normalizeText(b.nombre || '')] ?? 999)
+          );
+        }
+
+        return (a.nombre || '').localeCompare(b.nombre || '', 'es');
+      });
+    }
+
+    return filtered;
+  }, [menuItems, selectedCategory, searchTerm]);
+
+  const clearSearch = () => setSearchTerm('');
+
+  const isAlmuerzoView = normalizeText(selectedCategory) === 'almuerzo';
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900">Escáner de despacho</h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Escanea el QR o código de barras del pedido para cambiarlo a <span className="font-bold">en camino</span>.
-              </p>
-            </div>
+    <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-150px)]">
+      {/* === BARRA LATERAL / SUPERIOR DE FILTROS === */}
+      <aside className="lg:w-64 shrink-0">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 lg:sticky lg:top-24">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              <Filter size={18} className="text-gold" /> Filtros
+            </h3>
+            <button
+              onClick={forceFetchMenuItems}
+              disabled={loading}
+              className={`p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-all ${
+                loading ? 'animate-spin' : ''
+              }`}
+              title="Actualizar menú"
+            >
+              <RefreshCw size={18} />
+            </button>
+          </div>
 
-            <div className="flex flex-wrap gap-2">
+          {/* Buscador */}
+          <div className="relative mb-6 group">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-gold transition-colors"
+              size={18}
+            />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar plato..."
+              className="w-full pl-10 pr-8 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold/30 focus:border-gold/50 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
+            />
+            {searchTerm && (
               <button
-                onClick={fetchOrders}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 font-bold text-slate-700 hover:bg-slate-50"
+                onClick={clearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-200 text-gray-500"
+                title="Limpiar búsqueda"
               >
-                <RefreshCw size={16} className={loadingOrders ? "animate-spin" : ""} />
-                Actualizar pedidos
+                <XIcon size={14} />
               </button>
+            )}
+          </div>
 
-              {!scannerActive ? (
+          {/* Lista Categorías */}
+          <div>
+            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+              Categorías
+            </h4>
+            <div className="flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 scrollbar-hide">
+              {allCategories.map((cat) => (
                 <button
-                  onClick={startScanner}
-                  disabled={!selectedCameraId}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 font-bold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`whitespace-nowrap text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
+                    selectedCategory === cat
+                      ? 'bg-gold text-white shadow-md shadow-gold/20 translate-x-1'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:pl-5'
+                  }`}
                 >
-                  <Play size={16} />
-                  Iniciar escáner
+                  {cat}
+                  {selectedCategory === cat && (
+                    <span className="bg-white/20 w-2 h-2 rounded-full"></span>
+                  )}
                 </button>
-              ) : (
-                <button
-                  onClick={stopScanner}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-4 py-2 font-bold text-white hover:bg-rose-700"
-                >
-                  <Square size={16} />
-                  Detener
-                </button>
-              )}
+              ))}
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* === CONTENIDO PRINCIPAL (GRID) === */}
+      <div className="flex-1">
+        {/* Header de resultados */}
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h2 className="text-lg font-bold text-gray-800">
+            Platos{' '}
+            <span className="text-gray-400 font-normal text-sm ml-2">
+              ({visibleMenuItems.length})
+            </span>
+          </h2>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {isAlmuerzoView && lunchGroupedItems.length > 0 && (
+              <button
+                onClick={() => updateAllLunchAvailability(allLunchOff)}
+                disabled={bulkUpdatingLunch || loading}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-gold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                title={
+                  allLunchOff
+                    ? 'Encender todos los almuerzos'
+                    : 'Apagar todos los almuerzos'
+                }
+              >
+                {bulkUpdatingLunch
+                  ? 'Guardando...'
+                  : allLunchOff
+                  ? 'Encender todos los almuerzos'
+                  : 'Apagar todos los almuerzos'}
+              </button>
+            )}
+
+            <div className="hidden sm:flex gap-4 text-xs text-gray-500">
+              <div className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-500"></span> Disponible
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-gray-300"></span> Agotado
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-4">
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700">
-                <Camera size={18} /> Cámara
-              </div>
+        {/* {isAlmuerzoView && (
+          <div className="mb-4 p-3 rounded-lg border border-amber-100 bg-amber-50 text-sm text-amber-800">
+            Esta vista agrupa los productos cuyo nombre contiene <strong>almuerzo</strong> y,
+            además, incluye si existen: <strong>principio, arroz, yuca, papa, sopa del día y media sopa</strong>.
+          </div>
+        )} */}
 
-              <select
-                value={selectedCameraId}
-                onChange={(e) => setSelectedCameraId(e.target.value)}
-                className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-slate-400"
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+          {visibleMenuItems.map((item) => {
+            const isAvailable = item.disponible;
+
+            return (
+              <div
+                key={String(item.id)}
+                className={`group relative rounded-xl border transition-all duration-300 flex flex-col overflow-hidden ${
+                  isAvailable
+                    ? 'bg-white border-gray-200 hover:shadow-lg hover:-translate-y-1 hover:border-gold/30'
+                    : 'bg-gray-50 border-gray-200 opacity-75 grayscale-[0.5]'
+                }`}
               >
-                {cameras.length === 0 ? (
-                  <option value="">No hay cámaras disponibles</option>
-                ) : (
-                  cameras.map((cam) => (
-                    <option key={cam.id} value={cam.id}>
-                      {cam.label || `Cámara ${cam.id}`}
-                    </option>
-                  ))
-                )}
-              </select>
+                <div className={`h-1 w-full ${isAvailable ? 'bg-gold' : 'bg-gray-300'}`} />
 
-              <div className="overflow-hidden rounded-3xl border border-dashed border-slate-300 bg-slate-100">
-                <div id={SCANNER_REGION_ID} className="min-h-[320px] w-full" />
-              </div>
-
-              <div className="mt-4 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white">
-                Estado: {busy ? "procesando..." : status}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700">
-                <Truck size={18} /> Últimos eventos
-              </div>
-
-              <div className="space-y-2">
-                {logs.length === 0 ? (
-                  <div className="rounded-2xl bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                    Aún no hay lecturas.
-                  </div>
-                ) : (
-                  logs.map((log) => (
-                    <div
-                      key={log.id}
-                      className={`rounded-2xl border px-4 py-3 text-sm ${
-                        log.status === "ok"
-                          ? "border-emerald-200 bg-emerald-50"
-                          : log.status === "error"
-                          ? "border-rose-200 bg-rose-50"
-                          : "border-amber-200 bg-amber-50"
+                <div className="p-5 flex flex-col flex-1">
+                  <div className="flex justify-between items-start gap-2 mb-3">
+                    <h3
+                      className={`font-bold text-lg leading-tight ${
+                        isAvailable
+                          ? 'text-gray-800'
+                          : 'text-gray-500 line-through decoration-gray-400'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-black text-slate-900">{log.message}</div>
-                          <div className="mt-1 break-all text-xs text-slate-500">{log.code || "—"}</div>
-                        </div>
-                        <div className="shrink-0 text-xs font-bold text-slate-500">{log.at}</div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+                      {item.nombre}
+                    </h3>
 
-          <div className="space-y-4">
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 text-sm font-bold text-slate-700">Resumen rápido</div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Pedidos cargados</div>
-                  <div className="mt-1 text-3xl font-black text-slate-900">{orders.length}</div>
-                </div>
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Cámara seleccionada</div>
-                  <div className="mt-1 text-sm font-black text-slate-900 break-words">
-                    {cameras.find((c) => c.id === selectedCameraId)?.label || "Sin cámara"}
+                    <button
+                      onClick={() => updateMenuItemAvailability(item, !item.disponible)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gold/50 focus:ring-offset-2 ${
+                        item.disponible ? 'bg-green-500' : 'bg-gray-300'
+                      }`}
+                      title={
+                        item.disponible
+                          ? 'Marcar como Agotado'
+                          : 'Marcar como Disponible'
+                      }
+                    >
+                      <span className="sr-only">Disponibilidad</span>
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          item.disponible ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 mb-4 flex-1 content-start">
+                    {item.categorias?.map((categoria: string) => (
+                      <span
+                        key={categoria}
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                          isAvailable
+                            ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                            : 'bg-gray-100 text-gray-500 border border-gray-200'
+                        }`}
+                      >
+                        <Tag size={10} className="mr-1" /> {categoria}
+                      </span>
+                    ))}
+
+                    {isAlmuerzoView && isLunchExtraItem(item) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border border-blue-100">
+                        Extra almuerzo
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                        Precio
+                      </span>
+                      <span
+                        className={`text-xl font-bold ${
+                          isAvailable ? 'text-gray-900' : 'text-gray-400'
+                        }`}
+                      >
+                        {formatPrice(item.valor)}
+                      </span>
+                    </div>
+
+                    {!isAvailable && (
+                      <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-md uppercase">
+                        Agotado
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 text-sm font-bold text-slate-700">Cómo usar</div>
-              <div className="space-y-3 text-sm text-slate-600">
-                <div className="flex gap-3">
-                  <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} />
-                  <p>Abre la cámara y apunta al QR o código de barras del pedido.</p>
-                </div>
-                <div className="flex gap-3">
-                  <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} />
-                  <p>Si el pedido existe, se enviará un POST al webhook y el estado cambiará a <b>en camino</b>.</p>
-                </div>
-                <div className="flex gap-3">
-                  <AlertCircle className="mt-0.5 shrink-0 text-amber-600" size={16} />
-                  <p>Para evitar duplicados, el mismo código se ignora durante unos segundos.</p>
-                </div>
-              </div>
-            </div>
-          </div>
+            );
+          })}
         </div>
+
+        {!loading && visibleMenuItems.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <div className="bg-gray-50 p-4 rounded-full mb-4">
+              <UtensilsCrossed size={48} className="opacity-20" />
+            </div>
+            <p className="text-lg font-medium">No se encontraron platos</p>
+            <p className="text-sm opacity-70">Intenta con otra categoría o búsqueda</p>
+            <button
+              onClick={clearSearch}
+              className="mt-4 text-gold hover:underline font-medium text-sm"
+            >
+              Limpiar filtros
+            </button>
+          </div>
+        )}
+
+        {loading && visibleMenuItems.length === 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 mt-4">
+            {[...Array(8)].map((_, i) => (
+              <div
+                key={i}
+                className="bg-white h-48 rounded-xl border border-gray-100 animate-pulse p-4"
+              >
+                <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+                <div className="mt-12 h-8 bg-gray-200 rounded w-full"></div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-export default ScannerEnCaminoPage;
+export default MenuTab;
