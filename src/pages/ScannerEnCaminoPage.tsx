@@ -459,24 +459,6 @@ const ScannerEnCaminoPage: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 text-sm font-bold text-slate-700">Cómo usar</div>
-              <div className="space-y-3 text-sm text-slate-600">
-                <div className="flex gap-3">
-                  <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} />
-                  <p>Abre la cámara y apunta al QR o código de barras del pedido.</p>
-                </div>
-                <div className="flex gap-3">
-                  <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} />
-                  <p>Si el pedido existe, se enviará un POST al webhook y el estado cambiará a <b>en camino</b>.</p>
-                </div>
-                <div className="flex gap-3">
-                  <AlertCircle className="mt-0.5 shrink-0 text-amber-600" size={16} />
-                  <p>Para evitar duplicados, el mismo código se ignora durante unos segundos.</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
