@@ -1,5 +1,5 @@
 // src/pages/AdminResultados.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   RefreshCw,
   Calendar,
@@ -9,7 +9,6 @@ import {
   BarChart2,
   MapPin,
   Activity,
-  Info,
   Filter,
 } from 'lucide-react';
 import {
@@ -29,38 +28,45 @@ import {
 const HISTORIAL_API = 'https://n8n.alliasoft.com/webhook/luis-res/historial';
 
 interface HistorialRow {
-  fecha: string; // "14/08/2025 10:08:36"
-  valor_restaurante: number;
-  valor_domicilio: number;
+  fecha: string;
+  valor_restaurante: number | string;
+  valor_domicilio: number | string;
   metodo_pago: string;
   'detalle pedido'?: string;
 }
 
+interface PaymentTotal {
+  count: number;
+  total: number;
+}
+
 interface MonthlyStats {
-  key: string; // "2025-08"
+  key: string; // YYYY-MM
   year: number;
   month: number;
-  label: string; // "Agosto 2025"
+  label: string;
   totalRestaurante: number;
   totalDomicilio: number;
   totalGeneral: number;
   pedidos: number;
-  paymentTotals: Record<
-    string,
-    {
-      count: number;
-      total: number;
-    }
-  >;
+  paymentTotals: Record<string, PaymentTotal>;
 }
 
 interface DailyStats {
-  dateKey: string; // "2025-08-14"
-  label: string; // "14/08"
+  dateKey: string; // YYYY-MM-DD
+  label: string; // DD/MM
   pedidos: number;
   totalRestaurante: number;
   totalDomicilio: number;
   totalGeneral: number;
+}
+
+interface ParsedFecha {
+  day: number;
+  month: number;
+  year: number;
+  monthKey: string;
+  dateKey: string;
 }
 
 const monthNamesEs = [
@@ -76,33 +82,301 @@ const monthNamesEs = [
   'Octubre',
   'Noviembre',
   'Diciembre',
-];
+] as const;
 
-const formatCOP = (n: number) => `$${(n || 0).toLocaleString('es-CO')}`;
+const copFormatter = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  maximumFractionDigits: 0,
+});
 
-const parseFechaParts = (fecha: string) => {
+const formatCOP = (value: number) =>
+  copFormatter.format(Number.isFinite(value) ? value : 0);
+
+const cn = (...classes: Array<string | false | null | undefined>) =>
+  classes.filter(Boolean).join(' ');
+
+const toTitleCase = (value: string) => {
+  if (!value) return 'Sin especificar';
+
+  return value
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
+const normalizePaymentMethod = (value: unknown) => {
+  if (typeof value !== 'string') return 'sin_especificar';
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-+/g, '_');
+
+  return normalized || 'sin_especificar';
+};
+
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value !== 'string') return 0;
+
+  const cleaned = value.trim().replace(/[^\d,.-]/g, '');
+  if (!cleaned) return 0;
+
+  const hasComma = cleaned.includes(',');
+  const hasDot = cleaned.includes('.');
+
+  let normalized = cleaned;
+
+  if (hasComma && hasDot) {
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    const decimalSeparator = lastComma > lastDot ? ',' : '.';
+    const thousandsSeparator = decimalSeparator === ',' ? '.' : ',';
+
+    normalized = cleaned.split(thousandsSeparator).join('');
+    if (decimalSeparator === ',') {
+      normalized = normalized.replace(',', '.');
+    }
+  } else if (hasComma) {
+    const parts = cleaned.split(',');
+    normalized =
+      parts.length > 1 && parts[parts.length - 1].length !== 3
+        ? cleaned.replace(/\./g, '').replace(',', '.')
+        : cleaned.replace(/,/g, '');
+  } else if (hasDot) {
+    const parts = cleaned.split('.');
+    normalized =
+      parts.length > 1 && parts[parts.length - 1].length !== 3
+        ? cleaned.replace(/,/g, '')
+        : cleaned.replace(/\./g, '');
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const parseFechaParts = (fecha: string): ParsedFecha | null => {
   if (!fecha) return null;
+
   const [datePart] = fecha.split(' ');
   if (!datePart) return null;
+
   const [dd, mm, yyyy] = datePart.split('/');
   const day = Number(dd);
   const month = Number(mm);
   const year = Number(yyyy);
+
   if (!day || !month || !year) return null;
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
   const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
   return { day, month, year, monthKey, dateKey };
 };
 
-const toTitleCase = (value: string) => {
-  if (!value) return '';
-  return value
-    .split('_')
-    .join(' ')
-    .split(' ')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
+const normalizeHistorialRow = (row: HistorialRow): HistorialRow => ({
+  ...row,
+  valor_restaurante: toNumber(row.valor_restaurante),
+  valor_domicilio: toNumber(row.valor_domicilio),
+  metodo_pago: normalizePaymentMethod(row.metodo_pago),
+});
+
+const buildMonthlyStats = (historial: HistorialRow[]): MonthlyStats[] => {
+  const map = new Map<string, MonthlyStats>();
+
+  for (const rawRow of historial) {
+    const row = normalizeHistorialRow(rawRow);
+    const parsed = parseFechaParts(row.fecha);
+
+    if (!parsed) continue;
+
+    const { year, month, monthKey } = parsed;
+    const label = `${monthNamesEs[month - 1] ?? `Mes ${month}`} ${year}`;
+
+    const vr = toNumber(row.valor_restaurante);
+    const vd = toNumber(row.valor_domicilio);
+    const total = vr + vd;
+    const paymentMethod = normalizePaymentMethod(row.metodo_pago);
+
+    let current = map.get(monthKey);
+
+    if (!current) {
+      current = {
+        key: monthKey,
+        year,
+        month,
+        label,
+        totalRestaurante: 0,
+        totalDomicilio: 0,
+        totalGeneral: 0,
+        pedidos: 0,
+        paymentTotals: {},
+      };
+      map.set(monthKey, current);
+    }
+
+    current.totalRestaurante += vr;
+    current.totalDomicilio += vd;
+    current.totalGeneral += total;
+    current.pedidos += 1;
+
+    if (!current.paymentTotals[paymentMethod]) {
+      current.paymentTotals[paymentMethod] = { count: 0, total: 0 };
+    }
+
+    current.paymentTotals[paymentMethod].count += 1;
+    current.paymentTotals[paymentMethod].total += total;
+  }
+
+  return Array.from(map.values()).sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    return b.month - a.month;
+  });
 };
+
+const buildDailyStats = (
+  historial: HistorialRow[],
+  selectedMonthKey: string | null,
+): DailyStats[] => {
+  if (!selectedMonthKey) return [];
+
+  const map = new Map<string, DailyStats>();
+
+  for (const rawRow of historial) {
+    const row = normalizeHistorialRow(rawRow);
+    const parsed = parseFechaParts(row.fecha);
+
+    if (!parsed || parsed.monthKey !== selectedMonthKey) continue;
+
+    const { day, month, dateKey } = parsed;
+    const label = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`;
+
+    let current = map.get(dateKey);
+
+    if (!current) {
+      current = {
+        dateKey,
+        label,
+        pedidos: 0,
+        totalRestaurante: 0,
+        totalDomicilio: 0,
+        totalGeneral: 0,
+      };
+      map.set(dateKey, current);
+    }
+
+    const vr = toNumber(row.valor_restaurante);
+    const vd = toNumber(row.valor_domicilio);
+
+    current.pedidos += 1;
+    current.totalRestaurante += vr;
+    current.totalDomicilio += vd;
+    current.totalGeneral += vr + vd;
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+};
+
+const getGlobalStats = (monthlyStats: MonthlyStats[]) => {
+  if (monthlyStats.length === 0) {
+    return {
+      totalPedidos: 0,
+      totalVentas: 0,
+      mejorMes: null as MonthlyStats | null,
+      ticketPromedioGlobal: 0,
+    };
+  }
+
+  const totalPedidos = monthlyStats.reduce((acc, item) => acc + item.pedidos, 0);
+  const totalVentas = monthlyStats.reduce((acc, item) => acc + item.totalGeneral, 0);
+  const mejorMes =
+    monthlyStats.reduce<MonthlyStats | null>(
+      (best, current) =>
+        !best || current.totalGeneral > best.totalGeneral ? current : best,
+      null,
+    ) ?? null;
+
+  return {
+    totalPedidos,
+    totalVentas,
+    mejorMes,
+    ticketPromedioGlobal: totalPedidos > 0 ? totalVentas / totalPedidos : 0,
+  };
+};
+
+const StatCard: React.FC<{
+  title: string;
+  value: React.ReactNode;
+  subtitle?: string;
+  icon: React.ReactNode;
+}> = ({ title, value, subtitle, icon }) => (
+  <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3">
+    <div className="flex items-center justify-between mb-1">
+      <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+        {title}
+      </span>
+      {icon}
+    </div>
+    <div className="text-sm md:text-lg font-semibold text-gray-900 tabular-nums">
+      {value}
+    </div>
+    {subtitle && <p className="text-[11px] text-gray-500 mt-1">{subtitle}</p>}
+  </div>
+);
+
+const PanelCard: React.FC<{
+  title: string;
+  icon?: React.ReactNode;
+  description?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ title, icon, description, right, children }) => (
+  <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5 shadow-sm">
+    <div className="flex items-center justify-between mb-3 gap-3">
+      <div className="flex items-center gap-2 min-w-0">
+        {icon}
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+          {description && <p className="text-xs text-gray-500">{description}</p>}
+        </div>
+      </div>
+      {right}
+    </div>
+    {children}
+  </div>
+);
+
+const EmptyState: React.FC<{ text: string }> = ({ text }) => (
+  <p className="text-sm text-gray-500">{text}</p>
+);
+
+const RefreshButton: React.FC<{
+  onClick: () => void;
+  loading: boolean;
+  small?: boolean;
+}> = ({ onClick, loading, small = false }) => (
+  <button
+    onClick={onClick}
+    disabled={loading}
+    className={cn(
+      'inline-flex items-center gap-2 rounded-xl font-semibold shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed',
+      small
+        ? 'text-xs px-2 py-1 bg-gold text-white hover:bg-gold/90'
+        : 'text-sm px-4 py-2 bg-gold text-white hover:bg-gold/90',
+    )}
+    title="Actualizar historial"
+  >
+    <RefreshCw size={small ? 14 : 16} className={loading ? 'animate-spin' : ''} />
+    {loading ? 'Actualizando...' : 'Actualizar datos'}
+  </button>
+);
 
 const AdminResultados: React.FC = () => {
   const [historial, setHistorial] = useState<HistorialRow[]>([]);
@@ -110,185 +384,98 @@ const AdminResultados: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
 
-  const fetchHistorial = async () => {
+  const fetchHistorial = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(HISTORIAL_API);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setHistorial(data as HistorialRow[]);
-      } else {
+
+      const res = await fetch(HISTORIAL_API, { signal });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data: unknown = await res.json();
+
+      if (!Array.isArray(data)) {
         throw new Error('Respuesta inválida del servidor');
       }
-    } catch (e) {
-      console.error(e);
+
+      setHistorial((data as HistorialRow[]).map(normalizeHistorialRow));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+
+      console.error(err);
       setError('No se pudo cargar el historial. Intenta nuevamente.');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
-  };
-
-  useEffect(() => {
-    fetchHistorial();
   }, []);
 
-  const monthlyStats = useMemo<MonthlyStats[]>(() => {
-    const map = new Map<string, MonthlyStats>();
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchHistorial(controller.signal);
 
-    historial.forEach((row) => {
-      const parsed = parseFechaParts(row.fecha);
-      if (!parsed) return;
+    return () => controller.abort();
+  }, [fetchHistorial]);
 
-      const { year, month, monthKey } = parsed;
-      const label = `${monthNamesEs[month - 1] ?? `Mes ${month}`} ${year}`;
+  const monthlyStats = useMemo(() => buildMonthlyStats(historial), [historial]);
 
-      let m = map.get(monthKey);
-      if (!m) {
-        m = {
-          key: monthKey,
-          year,
-          month,
-          label,
-          totalRestaurante: 0,
-          totalDomicilio: 0,
-          totalGeneral: 0,
-          pedidos: 0,
-          paymentTotals: {},
-        };
-        map.set(monthKey, m);
-      }
+  const globalStats = useMemo(() => getGlobalStats(monthlyStats), [monthlyStats]);
 
-      const vr = row.valor_restaurante || 0;
-      const vd = row.valor_domicilio || 0;
-      const total = vr + vd;
-      const mp = (row.metodo_pago || 'sin_especificar').toLowerCase();
-
-      m.totalRestaurante += vr;
-      m.totalDomicilio += vd;
-      m.totalGeneral += total;
-      m.pedidos += 1;
-
-      if (!m.paymentTotals[mp]) {
-        m.paymentTotals[mp] = { count: 0, total: 0 };
-      }
-      m.paymentTotals[mp].count += 1;
-      m.paymentTotals[mp].total += total;
-    });
-
-    return Array.from(map.values()).sort((a, b) => {
-      if (a.year === b.year) return b.month - a.month; // más nuevo primero
-      return b.year - a.year;
-    });
-  }, [historial]);
-
-  // Stats globales (todo el historial)
-  const globalStats = useMemo(() => {
+  useEffect(() => {
     if (monthlyStats.length === 0) {
-      return {
-        totalPedidos: 0,
-        totalVentas: 0,
-        mejorMes: null as MonthlyStats | null,
-        ticketPromedioGlobal: 0,
-      };
+      if (selectedMonthKey !== null) setSelectedMonthKey(null);
+      return;
     }
 
-    let totalPedidos = 0;
-    let totalVentas = 0;
-    let mejorMes: MonthlyStats | null = monthlyStats[0];
+    const exists = monthlyStats.some((m) => m.key === selectedMonthKey);
 
-    monthlyStats.forEach((m) => {
-      totalPedidos += m.pedidos;
-      totalVentas += m.totalGeneral;
-      if (!mejorMes || m.totalGeneral > mejorMes.totalGeneral) {
-        mejorMes = m;
-      }
-    });
-
-    const ticketPromedioGlobal = totalPedidos > 0 ? totalVentas / totalPedidos : 0;
-
-    return { totalPedidos, totalVentas, mejorMes, ticketPromedioGlobal };
-  }, [monthlyStats]);
-
-  // Seleccionar automáticamente el mes más reciente
-  useEffect(() => {
-    if (!selectedMonthKey && monthlyStats.length > 0) {
+    if (!selectedMonthKey || !exists) {
       setSelectedMonthKey(monthlyStats[0].key);
     }
   }, [monthlyStats, selectedMonthKey]);
 
   const selectedMonth = useMemo(
-    () => monthlyStats.find((m) => m.key === selectedMonthKey) || null,
+    () => monthlyStats.find((m) => m.key === selectedMonthKey) ?? null,
     [monthlyStats, selectedMonthKey],
   );
 
-  const dailyStats = useMemo<DailyStats[]>(() => {
-    if (!selectedMonthKey) return [];
-    const map = new Map<string, DailyStats>();
-
-    historial.forEach((row) => {
-      const parsed = parseFechaParts(row.fecha);
-      if (!parsed || parsed.monthKey !== selectedMonthKey) return;
-
-      const { day, dateKey, month } = parsed;
-      const label = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`;
-
-      let d = map.get(dateKey);
-      if (!d) {
-        d = {
-          dateKey,
-          label,
-          pedidos: 0,
-          totalRestaurante: 0,
-          totalDomicilio: 0,
-          totalGeneral: 0,
-        };
-        map.set(dateKey, d);
-      }
-
-      const vr = row.valor_restaurante || 0;
-      const vd = row.valor_domicilio || 0;
-      d.pedidos += 1;
-      d.totalRestaurante += vr;
-      d.totalDomicilio += vd;
-      d.totalGeneral += vr + vd;
-    });
-
-    return Array.from(map.values()).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
-  }, [historial, selectedMonthKey]);
+  const dailyStats = useMemo(
+    () => buildDailyStats(historial, selectedMonthKey),
+    [historial, selectedMonthKey],
+  );
 
   const paymentBreakdown = useMemo(() => {
     if (!selectedMonth) return [];
-    const totalGeneral = selectedMonth.totalGeneral || 0;
-    const entries = Object.entries(selectedMonth.paymentTotals);
-    return entries
+
+    const totalMonth = selectedMonth.totalGeneral || 0;
+
+    return Object.entries(selectedMonth.paymentTotals)
       .map(([method, stats]) => ({
         method,
         count: stats.count,
         total: stats.total,
-        percentage: totalGeneral > 0 ? (stats.total / totalGeneral) * 100 : 0,
+        percentage: totalMonth > 0 ? (stats.total / totalMonth) * 100 : 0,
       }))
       .sort((a, b) => b.total - a.total);
   }, [selectedMonth]);
 
-  const ticketPromedioMes =
-    selectedMonth && selectedMonth.pedidos > 0
-      ? selectedMonth.totalGeneral / selectedMonth.pedidos
-      : 0;
+  const ticketPromedioMes = useMemo(() => {
+    if (!selectedMonth || selectedMonth.pedidos === 0) return 0;
+    return selectedMonth.totalGeneral / selectedMonth.pedidos;
+  }, [selectedMonth]);
 
-  // Datos para gráficos
   const monthlyChartData = useMemo(
     () =>
-      monthlyStats
-        .slice()
-        .reverse() // más viejo a la izquierda
-        .map((m) => ({
-          name: `${(monthNamesEs[m.month - 1] || '').slice(0, 3)} ${String(m.year).slice(2)}`,
-          restaurante: Math.round(m.totalRestaurante),
-          domicilio: Math.round(m.totalDomicilio),
-          total: Math.round(m.totalGeneral),
-        })),
+      [...monthlyStats].reverse().map((m) => ({
+        name: `${(monthNamesEs[m.month - 1] || '').slice(0, 3)} ${String(m.year).slice(2)}`,
+        restaurante: Math.round(m.totalRestaurante),
+        domicilio: Math.round(m.totalDomicilio),
+        total: Math.round(m.totalGeneral),
+      })),
     [monthlyStats],
   );
 
@@ -315,7 +502,6 @@ const AdminResultados: React.FC = () => {
 
   return (
     <div className="flex flex-col md:flex-row gap-6">
-      {/* Sidebar de meses (desktop / tablet) */}
       <aside className="hidden md:block w-72 shrink-0">
         <div className="sticky top-24 space-y-4">
           <div className="flex items-center justify-between px-1">
@@ -323,14 +509,12 @@ const AdminResultados: React.FC = () => {
               <Calendar size={16} />
               Meses
             </h3>
-            <button
-              onClick={fetchHistorial}
-              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-gold text-white hover:bg-gold/90 shadow-sm transition"
-              title="Actualizar historial"
-            >
-              <RefreshCw size={14} />
-              Actualizar
-            </button>
+
+            <RefreshButton
+              onClick={() => fetchHistorial()}
+              loading={loading}
+              small
+            />
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-2 max-h-[calc(100vh-180px)] overflow-y-auto shadow-sm">
@@ -339,120 +523,82 @@ const AdminResultados: React.FC = () => {
             )}
 
             <div className="space-y-1">
-              {monthlyStats.map((m) => (
-                <button
-                  key={m.key}
-                  onClick={() => setSelectedMonthKey(m.key)}
-                  className={`w-full text-left px-3 py-2 rounded-xl text-xs md:text-sm border transition shadow-sm hover:shadow-md flex flex-col gap-0.5 ${
-                    selectedMonthKey === m.key
-                      ? 'bg-gold text-white border-gold'
-                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium truncate">{m.label}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100">
-                      {m.pedidos} pedidos
-                    </span>
-                  </div>
-                  <div
-                    className={`text-[11px] ${
-                      selectedMonthKey === m.key ? 'text-gray-100' : 'text-gray-500'
-                    }`}
+              {monthlyStats.map((m) => {
+                const isSelected = selectedMonthKey === m.key;
+
+                return (
+                  <button
+                    key={m.key}
+                    onClick={() => setSelectedMonthKey(m.key)}
+                    className={cn(
+                      'w-full text-left px-3 py-2 rounded-xl text-xs md:text-sm border transition shadow-sm hover:shadow-md flex flex-col gap-0.5',
+                      isSelected
+                        ? 'bg-gold text-white border-gold'
+                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50',
+                    )}
                   >
-                    {formatCOP(m.totalGeneral)}
-                  </div>
-                </button>
-              ))}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium truncate">{m.label}</span>
+                      <span
+                        className={cn(
+                          'text-[10px] px-1.5 py-0.5 rounded-full',
+                          isSelected
+                            ? 'bg-white/20 text-white'
+                            : 'bg-gray-100 text-gray-600',
+                        )}
+                      >
+                        {m.pedidos} pedidos
+                      </span>
+                    </div>
+
+                    <div
+                      className={cn(
+                        'text-[11px]',
+                        isSelected ? 'text-gray-100' : 'text-gray-500',
+                      )}
+                    >
+                      {formatCOP(m.totalGeneral)}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {loading && <p className="text-xs text-gray-500 px-1">Cargando historial…</p>}
           {error && <p className="text-xs text-red-600 px-1">{error}</p>}
         </div>
       </aside>
 
-      {/* Contenido principal */}
       <div className="flex-1 min-w-0 space-y-6">
-        {/* Encabezado + resumen global */}
         <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm border border-gray-200">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700 mb-2">
-                <Activity size={14} />
-                <span>Dashboard de resultados</span>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <BarChart2 size={22} className="text-gold" />
-                Rendimiento de ventas
-              </h2>
-              <p className="text-sm text-gray-600 mt-1 max-w-xl">
-                Visualiza el desempeño del restaurante y los domicilios por mes, día y método
-                de pago en una vista clara y profesional.
-              </p>
-            </div>
-
-            <div className="flex flex-col items-start md:items-end gap-2">
-              <button
-                onClick={fetchHistorial}
-                className="inline-flex items-center gap-2 bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transition"
-              >
-                <RefreshCw size={16} />
-                Actualizar datos
-              </button>
-              <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                <Info size={12} />
-                <span>Fuente: webhook n8n · Historial de pedidos</span>
-              </div>
-            </div>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4">
+            <RefreshButton
+              onClick={() => fetchHistorial()}
+              loading={loading}
+            />
           </div>
 
-          {/* Resumen global (histórico) */}
           <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                  Ventas históricas
-                </span>
-                <DollarSign size={14} className="text-emerald-500" />
-              </div>
-              <p className="text-sm md:text-lg font-semibold text-gray-900 tabular-nums">
-                {formatCOP(globalStats.totalVentas)}
-              </p>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Suma de todos los meses registrados
-              </p>
-            </div>
+            <StatCard
+              title="Ventas históricas"
+              value={formatCOP(globalStats.totalVentas)}
+              subtitle="Suma de todos los meses registrados"
+              icon={<DollarSign size={14} className="text-emerald-500" />}
+            />
 
-            <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                  Pedidos totales
-                </span>
-                <Activity size={14} className="text-sky-500" />
-              </div>
-              <p className="text-sm md:text-lg font-semibold text-gray-900 tabular-nums">
-                {globalStats.totalPedidos}
-              </p>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Historial completo del sistema
-              </p>
-            </div>
+            <StatCard
+              title="Pedidos totales"
+              value={globalStats.totalPedidos}
+              subtitle="Historial completo del sistema"
+              icon={<Activity size={14} className="text-sky-500" />}
+            />
 
-            <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                  Ticket promedio histórico
-                </span>
-                <TrendingUp size={14} className="text-gold" />
-              </div>
-              <p className="text-sm md:text-lg font-semibold text-gray-900 tabular-nums">
-                {formatCOP(globalStats.ticketPromedioGlobal)}
-              </p>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Promedio por pedido (todos los meses)
-              </p>
-            </div>
+            <StatCard
+              title="Ticket promedio histórico"
+              value={formatCOP(globalStats.ticketPromedioGlobal)}
+              subtitle="Promedio por pedido (todos los meses)"
+              icon={<TrendingUp size={14} className="text-gold" />}
+            />
 
             <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3">
               <div className="flex items-center justify-between mb-1">
@@ -461,6 +607,7 @@ const AdminResultados: React.FC = () => {
                 </span>
                 <Calendar size={14} className="text-rose-400" />
               </div>
+
               {globalStats.mejorMes ? (
                 <>
                   <p className="text-xs font-semibold text-gray-900">
@@ -477,15 +624,16 @@ const AdminResultados: React.FC = () => {
           </div>
         </div>
 
-        {/* Selector de mes en móviles */}
         <div className="md:hidden bg-white rounded-2xl border border-gray-200 p-3 shadow-sm flex items-center gap-3">
           <div className="flex-shrink-0 rounded-full bg-gray-100 p-2">
             <Filter size={16} className="text-gold" />
           </div>
+
           <div className="flex-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Mes seleccionado
             </label>
+
             <select
               value={selectedMonthKey ?? ''}
               onChange={(e) => setSelectedMonthKey(e.target.value || null)}
@@ -500,26 +648,17 @@ const AdminResultados: React.FC = () => {
           </div>
         </div>
 
-        {/* Gráfico global por mes (Restaurante + Domicilio + Total) */}
         {monthlyChartData.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <BarChart2 size={18} className="text-gold" />
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    Ventas por mes (histórico)
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Restaurante y domicilios apilados, con línea de total.
-                  </p>
-                </div>
-              </div>
+          <PanelCard
+            title="Ventas por mes (histórico)"
+            description="Restaurante y domicilios apilados, con línea de total."
+            icon={<BarChart2 size={18} className="text-gold" />}
+            right={
               <span className="text-xs text-gray-500">
                 {monthlyStats.length} mes(es) analizado(s)
               </span>
-            </div>
-
+            }
+          >
             <div className="w-full h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={monthlyChartData}>
@@ -527,53 +666,52 @@ const AdminResultados: React.FC = () => {
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis
                     tick={{ fontSize: 11 }}
-                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                    tickFormatter={(v: number) => `${Math.round(v / 1000)}k`}
                   />
                   <Tooltip
-                    formatter={(value: any) => formatCOP(Number(value))}
-                    labelFormatter={(label) => `Mes: ${label}`}
+                    formatter={(value: number | string) => formatCOP(Number(value))}
+                    labelFormatter={(label: string) => `Mes: ${label}`}
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Bar
                     dataKey="restaurante"
                     name="Restaurante"
                     stackId="ventas"
-                    fill="#facc15" // dorado
+                    fill="#facc15"
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar
                     dataKey="domicilio"
                     name="Domicilios"
                     stackId="ventas"
-                    fill="#38bdf8" // azul claro
+                    fill="#38bdf8"
                     radius={[4, 4, 0, 0]}
                   />
                   <Line
                     type="monotone"
                     dataKey="total"
                     name="Total"
-                    stroke="#0f172a" // gris muy oscuro
+                    stroke="#0f172a"
                     strokeWidth={2}
                     dot={false}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </PanelCard>
         )}
 
         {!selectedMonth && monthlyStats.length === 0 && !loading && (
           <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
             <p className="text-sm text-gray-600">
-              Aún no hay información de historial para mostrar. Cuando se registren pedidos
-              aparecerán aquí.
+              Aún no hay información de historial para mostrar. Cuando se registren
+              pedidos aparecerán aquí.
             </p>
           </div>
         )}
 
         {selectedMonth && (
           <>
-            {/* Resumen del mes seleccionado */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-1">
@@ -582,9 +720,7 @@ const AdminResultados: React.FC = () => {
                   </span>
                   <Calendar size={16} className="text-gray-400" />
                 </div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {selectedMonth.label}
-                </p>
+                <p className="text-sm font-semibold text-gray-900">{selectedMonth.label}</p>
                 <p className="text-xs text-gray-500 mt-1">
                   {selectedMonth.pedidos} pedidos en total
                 </p>
@@ -636,31 +772,19 @@ const AdminResultados: React.FC = () => {
               </div>
             </div>
 
-            {/* Gráficos del mes seleccionado */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Línea de ventas diarias */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp size={18} className="text-gold" />
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        Ventas diarias del mes
-                      </h3>
-                      <p className="text-xs text-gray-500">
-                        Total diario (restaurante + domicilio)
-                      </p>
-                    </div>
-                  </div>
+              <PanelCard
+                title="Ventas diarias del mes"
+                description="Total diario (restaurante + domicilio)"
+                icon={<TrendingUp size={18} className="text-gold" />}
+                right={
                   <span className="text-xs text-gray-500">
                     {dailyStats.length} día(s) con pedidos
                   </span>
-                </div>
-
+                }
+              >
                 {dailyChartData.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No hay registros diarios para este mes.
-                  </p>
+                  <EmptyState text="No hay registros diarios para este mes." />
                 ) : (
                   <div className="w-full h-64">
                     <ResponsiveContainer width="100%" height="100%">
@@ -669,11 +793,11 @@ const AdminResultados: React.FC = () => {
                         <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                         <YAxis
                           tick={{ fontSize: 11 }}
-                          tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                          tickFormatter={(v: number) => `${Math.round(v / 1000)}k`}
                         />
                         <Tooltip
-                          formatter={(value: any) => formatCOP(Number(value))}
-                          labelFormatter={(label) => `Día ${label}`}
+                          formatter={(value: number | string) => formatCOP(Number(value))}
+                          labelFormatter={(label: string) => `Día ${label}`}
                         />
                         <Line
                           type="monotone"
@@ -687,28 +811,15 @@ const AdminResultados: React.FC = () => {
                     </ResponsiveContainer>
                   </div>
                 )}
-              </div>
+              </PanelCard>
 
-              {/* Gráfico de métodos de pago */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <PieChartIcon size={18} className="text-gold" />
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        Métodos de pago (total del mes)
-                      </h3>
-                      <p className="text-xs text-gray-500">
-                        Comparativo por valor cobrado.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
+              <PanelCard
+                title="Métodos de pago (total del mes)"
+                description="Comparativo por valor cobrado."
+                icon={<PieChartIcon size={18} className="text-gold" />}
+              >
                 {paymentChartData.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No hay información de métodos de pago para este mes.
-                  </p>
+                  <EmptyState text="No hay información de métodos de pago para este mes." />
                 ) : (
                   <div className="w-full h-64">
                     <ResponsiveContainer width="100%" height="100%">
@@ -717,48 +828,38 @@ const AdminResultados: React.FC = () => {
                         <XAxis
                           type="number"
                           tick={{ fontSize: 11 }}
-                          tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                          tickFormatter={(v: number) => `${Math.round(v / 1000)}k`}
                         />
                         <YAxis
                           type="category"
                           dataKey="method"
-                          width={110}
+                          width={120}
                           tick={{ fontSize: 11 }}
                         />
                         <Tooltip
-                          formatter={(value: any) => formatCOP(Number(value))}
-                          labelFormatter={(label) => `Método: ${label}`}
+                          formatter={(value: number | string) => formatCOP(Number(value))}
+                          labelFormatter={(label: string) => `Método: ${label}`}
                         />
                         <Bar
                           dataKey="total"
                           name="Total"
-                          fill="#0ea5e9" // azul
+                          fill="#0ea5e9"
                           radius={[4, 4, 4, 4]}
                         />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 )}
-              </div>
+              </PanelCard>
             </div>
 
-            {/* Tablas: métodos de pago + totales diarios */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Tabla métodos de pago */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <PieChartIcon size={18} className="text-gold" />
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Detalle por método de pago
-                    </h3>
-                  </div>
-                </div>
-
+              <PanelCard
+                title="Detalle por método de pago"
+                icon={<PieChartIcon size={18} className="text-gold" />}
+              >
                 {paymentBreakdown.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No hay información de métodos de pago para este mes.
-                  </p>
+                  <EmptyState text="No hay información de métodos de pago para este mes." />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
@@ -791,23 +892,14 @@ const AdminResultados: React.FC = () => {
                     </table>
                   </div>
                 )}
-              </div>
+              </PanelCard>
 
-              {/* Tabla totales por día */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Calendar size={18} className="text-gold" />
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Resultados por día del mes
-                    </h3>
-                  </div>
-                </div>
-
+              <PanelCard
+                title="Resultados por día del mes"
+                icon={<Calendar size={18} className="text-gold" />}
+              >
                 {dailyStats.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No hay registros diarios para este mes.
-                  </p>
+                  <EmptyState text="No hay registros diarios para este mes." />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
@@ -840,15 +932,13 @@ const AdminResultados: React.FC = () => {
                     </table>
                   </div>
                 )}
-              </div>
+              </PanelCard>
             </div>
           </>
         )}
 
         {loading && (
-          <p className="text-sm text-gray-500">
-            Cargando información de resultados…
-          </p>
+          <p className="text-sm text-gray-500">Cargando información de resultados…</p>
         )}
       </div>
     </div>
