@@ -29,7 +29,13 @@ const cleanPhone = (raw: unknown) => {
 
 // CORRECCIÓN 2: Convertir a String antes de usar replace para evitar error con direcciones numéricas (ej: 12016)
 const sanitizeForTicket = (s: any): string =>
-  String(s || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, ' ').replace(/[^\S\n]+/g, ' ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  String(s || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\t/g, ' ')
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
 
 // CORRECCIÓN 3: Asegurar que wrapText reciba string
 const wrapText = (text: any, width: number): string[] => {
@@ -48,7 +54,10 @@ const wrapText = (text: any, width: number): string[] => {
   for (const tok of tokens) {
     if (!line.length) line = tok;
     else if ((line + ' ' + tok).length <= width) line += ' ' + tok;
-    else { lines.push(line); line = tok; }
+    else {
+      lines.push(line);
+      line = tok;
+    }
   }
   if (line) lines.push(line);
   return lines.length ? lines : [''];
@@ -97,6 +106,7 @@ const splitOutsideParens = (s: string, separators = [';']): string[] => {
   if (buf.trim()) out.push(buf.trim());
   return out;
 };
+
 const splitByCommaOutsideParens = (s: string): string[] => splitOutsideParens(s, [',']);
 
 const parseDetails = (raw: string) => {
@@ -148,29 +158,87 @@ const bytesToBase64 = (bytes: number[]): string => {
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 };
+
 const cp1252Map: Record<string, number> = {
   'Á': 0xC1, 'É': 0xC9, 'Í': 0xCD, 'Ó': 0xD3, 'Ú': 0xDA, 'Ü': 0xDC, 'Ñ': 0xD1,
   'á': 0xE1, 'é': 0xE9, 'í': 0xED, 'ó': 0xF3, 'ú': 0xFA, 'ü': 0xFC, 'ñ': 0xF1,
   '€': 0x80, '£': 0xA3, '¥': 0xA5, '¢': 0xA2, '°': 0xB0, '¿': 0xBF, '¡': 0xA1,
   '“': 0x93, '”': 0x94, '‘': 0x91, '’': 0x92, '—': 0x97, '–': 0x96, '…': 0x85,
 };
+
 const asciiFallback: Record<string, string> = {
-  '“':'"', '”':'"', '‘':"'", '’':"'", '—':'-', '–':'-', '…':'...', '€':'EUR'
+  '“': '"',
+  '”': '"',
+  '‘': "'",
+  '’': "'",
+  '—': '-',
+  '–': '-',
+  '…': '...',
+  '€': 'EUR'
 };
+
 const encodeCP1252 = (str: string): number[] => {
   const bytes: number[] = [];
   for (const ch of str) {
     const code = ch.codePointAt(0)!;
-    if (code <= 0x7F) { bytes.push(code); continue; }
-    if (cp1252Map[ch] !== undefined) { bytes.push(cp1252Map[ch]); continue; }
+    if (code <= 0x7F) {
+      bytes.push(code);
+      continue;
+    }
+    if (cp1252Map[ch] !== undefined) {
+      bytes.push(cp1252Map[ch]);
+      continue;
+    }
     const basic = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (basic.length === 1 && basic.charCodeAt(0) <= 0x7F) { bytes.push(basic.charCodeAt(0)); continue; }
-    if (asciiFallback[ch]) { for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0)); continue; }
+    if (basic.length === 1 && basic.charCodeAt(0) <= 0x7F) {
+      bytes.push(basic.charCodeAt(0));
+      continue;
+    }
+    if (asciiFallback[ch]) {
+      for (const c of asciiFallback[ch]) bytes.push(c.charCodeAt(0));
+      continue;
+    }
     bytes.push(0x3F);
   }
   return bytes;
 };
+
 const isAndroid = (): boolean => /Android/i.test(navigator.userAgent || '');
+
+const buildEscposBarcode = (value: string): number[] => {
+  const clean = String(value || '').trim();
+  if (!clean) return [];
+
+  const data = `{B${clean}`; // Code Set B para CODE128
+  const encoded = encodeCP1252(data);
+
+  const bytes: number[] = [];
+
+  // Centrar barcode
+  bytes.push(0x1B, 0x61, 0x01);
+
+  // Texto legible debajo
+  bytes.push(0x1D, 0x48, 0x02);
+
+  // Ancho barras
+  bytes.push(0x1D, 0x77, 0x02);
+
+  // Alto barras
+  bytes.push(0x1D, 0x68, 80);
+
+  // CODE128
+  bytes.push(0x1D, 0x6B, 0x49, encoded.length, ...encoded);
+
+  bytes.push(0x0A);
+  bytes.push(...encodeCP1252(`Pedido #${clean}`));
+  bytes.push(0x0A);
+
+  // Volver alineación izquierda
+  bytes.push(0x1B, 0x61, 0x00);
+
+  return bytes;
+};
+
 const buildEscposFromLines = (lines: string[], barcodeValue?: string): number[] => {
   const bytes: number[] = [];
 
@@ -227,7 +295,6 @@ const sendToRawBT = async (ticketLines: string[], barcodeValue?: string): Promis
   throw new Error('No se pudo invocar RawBT.');
 };
 
-
 const buildBarcodeSvg = (value: string): string => {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 
@@ -241,42 +308,6 @@ const buildBarcodeSvg = (value: string): string => {
 
   return new XMLSerializer().serializeToString(svg);
 };
-
-
-const buildEscposBarcode = (value: string): number[] => {
-  const clean = String(value || '').trim();
-  if (!clean) return [];
-
-  const data = `{B${clean}`; // Code Set B para CODE128
-  const encoded = encodeCP1252(data);
-
-  const bytes: number[] = [];
-
-  // Centrar barcode
-  bytes.push(0x1B, 0x61, 0x01);
-
-  // Texto legible debajo
-  bytes.push(0x1D, 0x48, 0x02);
-
-  // Ancho barras
-  bytes.push(0x1D, 0x77, 0x02);
-
-  // Alto barras
-  bytes.push(0x1D, 0x68, 80);
-
-  // CODE128
-  bytes.push(0x1D, 0x6B, 0x49, encoded.length, ...encoded);
-
-  bytes.push(0x0A);
-  bytes.push(...encodeCP1252(`Pedido #${clean}`));
-  bytes.push(0x0A);
-
-  // Volver alineación izquierda
-  bytes.push(0x1B, 0x61, 0x00);
-
-  return bytes;
-};
-
 
 // Helper para transformar Carrito de Edición a String
 const serializeCartToDetails = (items: CartItem[]): string => {
@@ -298,7 +329,7 @@ const parseDetailsToCart = (raw: string): CartItem[] => {
       name = parts.slice(1, parts.length - 1).join(', ').trim();
       priceTotal = parseInt(parts[parts.length - 1], 10) || 0;
     } else if (parts.length === 2) {
-      quantity = 1; 
+      quantity = 1;
       name = parts[0];
       priceTotal = parseInt(parts[1], 10) || 0;
     } else {
@@ -323,6 +354,7 @@ const buildFullPayload = (o: Order, override?: Partial<Order>) => {
     estado: merged.estado ?? '',
   };
 };
+
 const postOrderFull = async (o: Order, override?: Partial<Order>) => {
   const response = await fetch(ORDERS_API, {
     method: 'POST',
@@ -347,7 +379,7 @@ const OrdersTab: React.FC = () => {
   const [editValorRest, setEditValorRest] = useState(0);
   const [editValorDom, setEditValorDom] = useState(0);
   const [editMetodoPago, setEditMetodoPago] = useState('');
-  
+
   // Carrito y Menú
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -367,15 +399,21 @@ const OrdersTab: React.FC = () => {
       const response = await fetch(ORDERS_API);
       const data = await response.json();
       if (Array.isArray(data)) setOrders(data as Order[]);
-    } catch (error) { console.error('Error fetching orders:', error); }
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+    }
   };
 
   const fetchMenu = async () => {
     try {
       const res = await fetch(MENU_API);
       const data = await res.json();
-      if (Array.isArray(data)) setMenuItems(data.sort((a: any, b: any) => a.nombre.localeCompare(b.nombre)));
-    } catch (e) { console.error('Error menu', e); }
+      if (Array.isArray(data)) {
+        setMenuItems(data.sort((a: any, b: any) => a.nombre.localeCompare(b.nombre)));
+      }
+    } catch (e) {
+      console.error('Error menu', e);
+    }
   };
 
   // Filtros Menú
@@ -412,7 +450,13 @@ const OrdersTab: React.FC = () => {
   const addItemToCart = (menuItem: MenuItem) => {
     setCartItems(prev => {
       const exists = prev.find(i => i.name === menuItem.nombre);
-      if (exists) return prev.map(i => i.name === menuItem.nombre ? { ...i, quantity: i.quantity + 1 } : i);
+      if (exists) {
+        return prev.map(i =>
+          i.name === menuItem.nombre
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
+        );
+      }
       return [...prev, { name: menuItem.nombre, quantity: 1, priceUnit: menuItem.valor }];
     });
   };
@@ -438,21 +482,58 @@ const OrdersTab: React.FC = () => {
 
   const saveEdit = async (o: Order) => {
     const detailString = serializeCartToDetails(cartItems);
-    const updated: Order = { ...o, nombre: editNombre, direccion: editDireccion, "detalle pedido": detailString, valor_restaurante: editValorRest, valor_domicilio: editValorDom, metodo_pago: editMetodoPago };
+    const updated: Order = {
+      ...o,
+      nombre: editNombre,
+      direccion: editDireccion,
+      "detalle pedido": detailString,
+      valor_restaurante: editValorRest,
+      valor_domicilio: editValorDom,
+      metodo_pago: editMetodoPago
+    };
+
     setOrders(prev => prev.map(x => x.row_number === o.row_number ? updated : x));
     setEditingId(null);
+
     try {
-      await postOrderFull(o, { nombre: editNombre, direccion: editDireccion, "detalle pedido": detailString, valor_restaurante: editValorRest, valor_domicilio: editValorDom, metodo_pago: editMetodoPago });
-    } catch (e) { console.error(e); alert('No se pudo guardar los cambios.'); fetchOrders(); }
+      await postOrderFull(o, {
+        nombre: editNombre,
+        direccion: editDireccion,
+        "detalle pedido": detailString,
+        valor_restaurante: editValorRest,
+        valor_domicilio: editValorDom,
+        metodo_pago: editMetodoPago
+      });
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo guardar los cambios.');
+      fetchOrders();
+    }
   };
 
   const updateOrderEstado = async (order: Order, newStatus: string) => {
     const updated = { ...order, estado: newStatus };
     setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
-    try { await postOrderFull(order, { estado: newStatus }); } catch (error) {
+
+    try {
+      await postOrderFull(order, { estado: newStatus });
+    } catch (error) {
       console.error('Error status:', error);
       setOrders(prev => prev.map(o => (o.row_number === order.row_number ? order : o)));
       alert('No se pudo actualizar el estado.');
+    }
+  };
+
+  const updateOrderMetodoPago = async (order: Order, newMethod: string) => {
+    const updated = { ...order, metodo_pago: newMethod };
+    setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
+
+    try {
+      await postOrderFull(order, { metodo_pago: newMethod });
+    } catch (error) {
+      console.error('Error payment method:', error);
+      setOrders(prev => prev.map(o => (o.row_number === order.row_number ? order : o)));
+      alert('No se pudo actualizar el método de pago.');
     }
   };
 
@@ -468,7 +549,7 @@ const OrdersTab: React.FC = () => {
 
     const before: string[] = [];
     const detail: string[] = [];
-    const after:  string[] = [];
+    const after: string[] = [];
 
     before.push(repeat('=', COLS));
     before.push(center('LUIS RES'));
@@ -506,8 +587,6 @@ const OrdersTab: React.FC = () => {
         const allLines = [...before, ...detail, ...after];
         await sendToRawBT(allLines, barcodeValue);
 
-        
-        // Si funcionó, actualizar estado
         const updated = { ...order, estado: 'impreso' };
         setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
         await postOrderFull(order, { estado: 'impreso' });
@@ -518,7 +597,12 @@ const OrdersTab: React.FC = () => {
     }
 
     // === 2. MODO ESCRITORIO (Window.print) ===
-    const esc = (s: string) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const esc = (s: string) =>
+      (s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
     const TICKET_FONT_PX = 16;
     const DETAILS_FONT_PX = 18;
     const LINE_HEIGHT = 1.32;
@@ -530,7 +614,9 @@ const OrdersTab: React.FC = () => {
         <div class="price">${esc(money(priceNum))}</div>
       </div>
     `).join('');
+
     const barcodeSvg = buildBarcodeSvg(barcodeValue);
+
     const innerHtml = `
       <div class="ticket">
         <div class="header">
@@ -609,7 +695,6 @@ const OrdersTab: React.FC = () => {
               text-align: center;
               border-top: 1px dashed #000;
             }
-
             .barcode-block svg {
               width: 48mm;
               max-width: 48mm;
@@ -650,13 +735,17 @@ const OrdersTab: React.FC = () => {
   // Ordenamiento y Filtros
   const statusOptions = useMemo(() => {
     const setVals = new Set<string>();
-    orders.forEach(o => { if (o?.estado) setVals.add(o.estado); });
+    orders.forEach(o => {
+      if (o?.estado) setVals.add(o.estado);
+    });
     return ['todos', ...Array.from(setVals)];
   }, [orders]);
 
   const paymentOptions = useMemo(() => {
     const setVals = new Set<string>();
-    orders.forEach(o => { if (o?.metodo_pago) setVals.add(o.metodo_pago); });
+    orders.forEach(o => {
+      if (o?.metodo_pago) setVals.add(o.metodo_pago);
+    });
     return ['todos', ...Array.from(setVals)];
   }, [orders]);
 
@@ -666,6 +755,7 @@ const OrdersTab: React.FC = () => {
       const paymentMatch = filterPayment === 'todos' || order.metodo_pago === filterPayment;
       return statusMatch && paymentMatch;
     });
+
     return [...byFilters].sort((a, b) => {
       let cmp = 0;
       if (sortBy === 'fecha') {
@@ -688,20 +778,48 @@ const OrdersTab: React.FC = () => {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             Gestión de Pedidos
-            <span className="bg-gray-100 text-gray-600 text-sm px-2.5 py-0.5 rounded-full">{filteredOrders.length}</span>
+            <span className="bg-gray-100 text-gray-600 text-sm px-2.5 py-0.5 rounded-full">
+              {filteredOrders.length}
+            </span>
           </h2>
+
           <div className="flex flex-wrap items-center gap-3">
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm text-sm outline-none">
-              {statusOptions.map(opt => <option key={opt} value={opt}>{opt === 'todos' ? 'Todos los estados' : opt}</option>)}
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm text-sm outline-none"
+            >
+              {statusOptions.map(opt => (
+                <option key={opt} value={opt}>
+                  {opt === 'todos' ? 'Todos los estados' : opt}
+                </option>
+              ))}
             </select>
-            <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm text-sm outline-none">
-              {paymentOptions.map(opt => <option key={opt} value={opt}>{opt === 'todos' ? 'Todos los pagos' : opt}</option>)}
+
+            <select
+              value={filterPayment}
+              onChange={(e) => setFilterPayment(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm text-sm outline-none"
+            >
+              {paymentOptions.map(opt => (
+                <option key={opt} value={opt}>
+                  {opt === 'todos' ? 'Todos los pagos' : opt}
+                </option>
+              ))}
             </select>
+
             <div className="flex items-center gap-2">
-              <button onClick={() => setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'))} className="border border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2 bg-white shadow-sm hover:bg-gray-50 text-sm">
+              <button
+                onClick={() => setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+                className="border border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2 bg-white shadow-sm hover:bg-gray-50 text-sm"
+              >
                 <ArrowUpDown size={16} /> {sortDir === 'asc' ? 'Asc' : 'Desc'}
               </button>
-              <button onClick={fetchOrders} className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm text-sm transition-colors">
+
+              <button
+                onClick={fetchOrders}
+                className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm text-sm transition-colors"
+              >
                 <RefreshCw size={16} /> Actualizar
               </button>
             </div>
@@ -716,24 +834,37 @@ const OrdersTab: React.FC = () => {
             key={order.row_number}
             order={order}
             isEditing={editingId === order.row_number}
+
             // State Edicion
-            editNombre={editNombre} setEditNombre={setEditNombre}
-            editDireccion={editDireccion} setEditDireccion={setEditDireccion}
+            editNombre={editNombre}
+            setEditNombre={setEditNombre}
+            editDireccion={editDireccion}
+            setEditDireccion={setEditDireccion}
             editValorRest={editValorRest}
-            editValorDom={editValorDom} setEditValorDom={setEditValorDom}
-            editMetodoPago={editMetodoPago} setEditMetodoPago={setEditMetodoPago}
-            cartItems={cartItems} setCartItems={setCartItems}
+            editValorDom={editValorDom}
+            setEditValorDom={setEditValorDom}
+            editMetodoPago={editMetodoPago}
+            setEditMetodoPago={setEditMetodoPago}
+            cartItems={cartItems}
+            setCartItems={setCartItems}
+
             // Menú y Filtros
-            menuSearch={menuSearch} setMenuSearch={setMenuSearch}
-            menuCat={menuCat} setMenuCat={setMenuCat}
-            filteredMenu={filteredMenu} categories={categories}
-            addItemToCart={addItemToCart} decreaseItem={decreaseItem}
+            menuSearch={menuSearch}
+            setMenuSearch={setMenuSearch}
+            menuCat={menuCat}
+            setMenuCat={setMenuCat}
+            filteredMenu={filteredMenu}
+            categories={categories}
+            addItemToCart={addItemToCart}
+            decreaseItem={decreaseItem}
+
             // Acciones
             onCancelEdit={cancelEdit}
             onSaveEdit={saveEdit}
             onStartEdit={startEdit}
             onPrint={printOrder}
             onStatusChange={updateOrderEstado}
+            onPaymentMethodChange={updateOrderMetodoPago}
           />
         ))}
       </div>
