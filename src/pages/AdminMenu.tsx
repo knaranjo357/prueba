@@ -187,8 +187,6 @@ const MenuTab: React.FC = () => {
       return inCategory && inName;
     });
 
-    // Cuando esté en categoría almuerzo:
-    // primero los almuerzos normales, luego los extras agregados
     if (selectedCategoryNormalized === 'almuerzo') {
       const extraOrderMap = ALMUERZO_EXTRA_NAMES.reduce<Record<string, number>>((acc, name, idx) => {
         acc[normalizeText(name)] = idx;
@@ -221,53 +219,53 @@ const MenuTab: React.FC = () => {
   const isAlmuerzoView = normalizeText(selectedCategory) === 'almuerzo';
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-150px)]">
+    <div className="flex flex-col lg:flex-row lg:items-start gap-4">
       {/* === BARRA LATERAL / SUPERIOR DE FILTROS === */}
-      <aside className="lg:w-64 shrink-0">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 lg:sticky lg:top-24">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-              <Filter size={18} className="text-gold" /> Filtros
+      <aside className="lg:w-56 shrink-0 lg:self-start">
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 sticky top-20 lg:top-24 max-h-[calc(100vh-6rem)] overflow-y-auto">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+              <Filter size={16} className="text-gold" /> Filtros
             </h3>
             <button
               onClick={forceFetchMenuItems}
               disabled={loading}
-              className={`p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-all ${
+              className={`p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-all ${
                 loading ? 'animate-spin' : ''
               }`}
               title="Actualizar menú"
             >
-              <RefreshCw size={18} />
+              <RefreshCw size={16} />
             </button>
           </div>
 
           {/* Buscador */}
-          <div className="relative mb-6 group">
+          <div className="relative mb-4 group">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-gold transition-colors"
-              size={18}
+              size={16}
             />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar plato..."
-              className="w-full pl-10 pr-8 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold/30 focus:border-gold/50 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
+              className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gold/30 focus:border-gold/50 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
             />
             {searchTerm && (
               <button
                 onClick={clearSearch}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-200 text-gray-500"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-200 text-gray-500"
                 title="Limpiar búsqueda"
               >
-                <XIcon size={14} />
+                <XIcon size={13} />
               </button>
             )}
           </div>
 
           {/* Lista Categorías */}
           <div>
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+            <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
               Categorías
             </h4>
             <div className="flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 scrollbar-hide">
@@ -275,10 +273,10 @@ const MenuTab: React.FC = () => {
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`whitespace-nowrap text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
+                  className={`whitespace-nowrap text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
                     selectedCategory === cat
-                      ? 'bg-gold text-white shadow-md shadow-gold/20 translate-x-1'
-                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:pl-5'
+                      ? 'bg-gold text-white shadow-md shadow-gold/20'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                   }`}
                 >
                   {cat}
@@ -293,10 +291,10 @@ const MenuTab: React.FC = () => {
       </aside>
 
       {/* === CONTENIDO PRINCIPAL (GRID) === */}
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         {/* Header de resultados */}
-        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <h2 className="text-lg font-bold text-gray-800">
+        <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h2 className="text-base font-bold text-gray-800">
             Platos{' '}
             <span className="text-gray-400 font-normal text-sm ml-2">
               ({visibleMenuItems.length})
@@ -308,7 +306,7 @@ const MenuTab: React.FC = () => {
               <button
                 onClick={() => updateAllLunchAvailability(allLunchOff)}
                 disabled={bulkUpdatingLunch || loading}
-                className="px-4 py-2 rounded-lg text-sm font-semibold bg-gold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-gold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                 title={
                   allLunchOff
                     ? 'Encender todos los almuerzos'
@@ -323,7 +321,7 @@ const MenuTab: React.FC = () => {
               </button>
             )}
 
-            <div className="hidden sm:flex gap-4 text-xs text-gray-500">
+            <div className="hidden sm:flex gap-3 text-[11px] text-gray-500">
               <div className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-green-500"></span> Disponible
               </div>
@@ -334,32 +332,25 @@ const MenuTab: React.FC = () => {
           </div>
         </div>
 
-        {/* {isAlmuerzoView && (
-          <div className="mb-4 p-3 rounded-lg border border-amber-100 bg-amber-50 text-sm text-amber-800">
-            Esta vista agrupa los productos cuyo nombre contiene <strong>almuerzo</strong> y,
-            además, incluye si existen: <strong>principio, arroz, yuca, papa, sopa del día y media sopa</strong>.
-          </div>
-        )} */}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           {visibleMenuItems.map((item) => {
             const isAvailable = item.disponible;
 
             return (
               <div
                 key={String(item.id)}
-                className={`group relative rounded-xl border transition-all duration-300 flex flex-col overflow-hidden ${
+                className={`group relative rounded-lg border transition-all duration-300 flex flex-col overflow-hidden ${
                   isAvailable
-                    ? 'bg-white border-gray-200 hover:shadow-lg hover:-translate-y-1 hover:border-gold/30'
+                    ? 'bg-white border-gray-200 hover:shadow-md hover:-translate-y-0.5 hover:border-gold/30'
                     : 'bg-gray-50 border-gray-200 opacity-75 grayscale-[0.5]'
                 }`}
               >
-                <div className={`h-1 w-full ${isAvailable ? 'bg-gold' : 'bg-gray-300'}`} />
+                <div className={`h-0.5 w-full ${isAvailable ? 'bg-gold' : 'bg-gray-300'}`} />
 
-                <div className="p-5 flex flex-col flex-1">
-                  <div className="flex justify-between items-start gap-2 mb-3">
+                <div className="p-4 flex flex-col flex-1">
+                  <div className="flex justify-between items-start gap-2 mb-2">
                     <h3
-                      className={`font-bold text-lg leading-tight ${
+                      className={`font-bold text-base leading-tight ${
                         isAvailable
                           ? 'text-gray-800'
                           : 'text-gray-500 line-through decoration-gray-400'
@@ -370,7 +361,7 @@ const MenuTab: React.FC = () => {
 
                     <button
                       onClick={() => updateMenuItemAvailability(item, !item.disponible)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gold/50 focus:ring-offset-2 ${
+                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gold/50 focus:ring-offset-2 ${
                         item.disponible ? 'bg-green-500' : 'bg-gray-300'
                       }`}
                       title={
@@ -381,41 +372,41 @@ const MenuTab: React.FC = () => {
                     >
                       <span className="sr-only">Disponibilidad</span>
                       <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                           item.disponible ? 'translate-x-5' : 'translate-x-0'
                         }`}
                       />
                     </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 mb-4 flex-1 content-start">
+                  <div className="flex flex-wrap gap-1 mb-3 flex-1 content-start">
                     {item.categorias?.map((categoria: string) => (
                       <span
                         key={categoria}
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${
                           isAvailable
                             ? 'bg-amber-50 text-amber-700 border border-amber-100'
                             : 'bg-gray-100 text-gray-500 border border-gray-200'
                         }`}
                       >
-                        <Tag size={10} className="mr-1" /> {categoria}
+                        <Tag size={9} className="mr-1" /> {categoria}
                       </span>
                     ))}
 
                     {isAlmuerzoView && isLunchExtraItem(item) && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border border-blue-100">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border border-blue-100">
                         Extra almuerzo
                       </span>
                     )}
                   </div>
 
-                  <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between">
+                  <div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-between">
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">
                         Precio
                       </span>
                       <span
-                        className={`text-xl font-bold ${
+                        className={`text-lg font-bold ${
                           isAvailable ? 'text-gray-900' : 'text-gray-400'
                         }`}
                       >
@@ -424,7 +415,7 @@ const MenuTab: React.FC = () => {
                     </div>
 
                     {!isAvailable && (
-                      <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-md uppercase">
+                      <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-md uppercase">
                         Agotado
                       </span>
                     )}
@@ -436,15 +427,15 @@ const MenuTab: React.FC = () => {
         </div>
 
         {!loading && visibleMenuItems.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <div className="bg-gray-50 p-4 rounded-full mb-4">
-              <UtensilsCrossed size={48} className="opacity-20" />
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+            <div className="bg-gray-50 p-3 rounded-full mb-3">
+              <UtensilsCrossed size={40} className="opacity-20" />
             </div>
-            <p className="text-lg font-medium">No se encontraron platos</p>
+            <p className="text-base font-medium">No se encontraron platos</p>
             <p className="text-sm opacity-70">Intenta con otra categoría o búsqueda</p>
             <button
               onClick={clearSearch}
-              className="mt-4 text-gold hover:underline font-medium text-sm"
+              className="mt-3 text-gold hover:underline font-medium text-sm"
             >
               Limpiar filtros
             </button>
@@ -452,16 +443,16 @@ const MenuTab: React.FC = () => {
         )}
 
         {loading && visibleMenuItems.length === 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 mt-3">
             {[...Array(8)].map((_, i) => (
               <div
                 key={i}
-                className="bg-white h-48 rounded-xl border border-gray-100 animate-pulse p-4"
+                className="bg-white h-40 rounded-lg border border-gray-100 animate-pulse p-4"
               >
-                <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-                <div className="mt-12 h-8 bg-gray-200 rounded w-full"></div>
+                <div className="h-5 bg-gray-200 rounded w-3/4 mb-3"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                <div className="mt-10 h-7 bg-gray-200 rounded w-full"></div>
               </div>
             ))}
           </div>

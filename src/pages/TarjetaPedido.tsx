@@ -22,7 +22,7 @@ export interface Order {
   nombre?: string;
   numero?: string | number;
   direccion: string;
-  "detalle pedido": string;
+  'detalle pedido': string;
   valor_restaurante: number;
   valor_domicilio: number;
   metodo_pago: string;
@@ -295,6 +295,13 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
                   placeholder="Nombre del cliente"
                 />
               </div>
+
+              {phone && (
+                <div className="mt-2 ml-1 flex items-center gap-2 text-sm text-gray-600">
+                  <Phone size={14} className="text-green-600" />
+                  <span className="font-semibold break-all">{phone}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -540,18 +547,24 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-gray-900 font-black text-xl leading-tight mb-1">
-            <span className="break-words">{order.nombre || 'Cliente'}</span>
+          <div className="mb-1">
+            <div className="flex items-center gap-2 text-gray-900 font-black text-xl leading-tight">
+              <span className="break-words">{order.nombre || 'Cliente'}</span>
+            </div>
+
             {phone && (
-              <a
-                href={`https://wa.me/${phone}`}
-                target="_blank"
-                rel="noopener"
-                className="text-green-500 hover:text-green-600 hover:bg-green-50 p-1.5 rounded-full transition-colors shrink-0"
-                title="Abrir WhatsApp"
-              >
-                <Phone size={18} />
-              </a>
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <a
+                  href={`https://wa.me/${phone}`}
+                  target="_blank"
+                  rel="noopener"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-green-700 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors"
+                  title="Abrir WhatsApp"
+                >
+                  <Phone size={16} />
+                  <span className="break-all">{phone}</span>
+                </a>
+              </div>
             )}
           </div>
 
@@ -637,7 +650,7 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
           </div>
           <select
             value={order.metodo_pago || 'efectivo'}
-            onChange={(e) => onPaymentMethodChange(order, e.target.value)}
+            onChange={e => onPaymentMethodChange(order, e.target.value)}
             className="text-xs appearance-none bg-white/80 hover:bg-white border border-gray-200 hover:border-gray-300 rounded-lg pl-7 pr-8 py-1.5 font-bold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-gold/50 outline-none"
           >
             {paymentMethods.map(method => (
