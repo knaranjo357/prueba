@@ -137,6 +137,8 @@ const parseDetails = (raw: string) => {
   });
 };
 
+
+
 const formatItemBlock = (qty: string, name: string, priceNum: number): string[] => {
   const price = money(priceNum);
   const qtyLabel = qty ? `${qty} ` : '';
@@ -310,10 +312,15 @@ const buildBarcodeSvg = (value: string): string => {
 };
 
 // Helper para transformar Carrito de Edición a String
+// Formato: "- qty,nombre (nota) ,total;" — igual que Manual.tsx
 const serializeCartToDetails = (items: CartItem[]): string => {
   return items
-    .map(i => `- ${i.quantity}, ${i.name}, ${i.quantity * i.priceUnit}`)
-    .join('; ');
+    .map(i => {
+      const rawNote = (i.notes || '').trim().replace(/^\(+/, '').replace(/\)+$/, '').trim();
+      const nameWithNote = rawNote ? `${i.name} (${rawNote})` : i.name;
+      return `- ${i.quantity},${nameWithNote} ,${i.quantity * i.priceUnit}`;
+    })
+    .join(';\n');
 };
 
 const parseDetailsToCart = (raw: string): CartItem[] => {
@@ -335,8 +342,17 @@ const parseDetailsToCart = (raw: string): CartItem[] => {
     } else {
       name = parts[0] || 'Item';
     }
+
+    // Extraer nota entre paréntesis del nombre: "Pollo (sin sal)" → name="Pollo", notes="sin sal"
+    let notes = '';
+    const noteMatch = name.match(/^(.+?)\s*\((.+)\)\s*$/);
+    if (noteMatch) {
+      name = noteMatch[1].trim();
+      notes = noteMatch[2].trim();
+    }
+
     const priceUnit = quantity > 0 ? Math.round(priceTotal / quantity) : 0;
-    return { name, quantity, priceUnit };
+    return { name, quantity, priceUnit, notes };
   });
 };
 
@@ -774,20 +790,20 @@ const OrdersTab: React.FC = () => {
   return (
     <div className="min-w-0">
       {/* Barra de filtros sticky */}
-      <div className="sticky top-0 md:top-24 z-20 bg-white/80 backdrop-blur border-b border-gray-100 shadow-sm px-4 py-4 mb-6 -mx-4 transition-all">
+      <div className="sticky top-14 md:top-14 z-20 bg-white/90 backdrop-blur border-b border-gray-100 shadow-sm px-4 py-4 mb-6 -mx-4 transition-all">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            Gestión de Pedidos
-            <span className="bg-gray-100 text-gray-600 text-sm px-2.5 py-0.5 rounded-full">
+          <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-2.5">
+            Pedidos
+            <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-0.5 rounded-full font-bold">
               {filteredOrders.length}
             </span>
           </h2>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm text-sm outline-none"
+              className="border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 hover:bg-white shadow-sm text-sm outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all cursor-pointer"
             >
               {statusOptions.map(opt => (
                 <option key={opt} value={opt}>
@@ -799,7 +815,7 @@ const OrdersTab: React.FC = () => {
             <select
               value={filterPayment}
               onChange={(e) => setFilterPayment(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 bg-white shadow-sm text-sm outline-none"
+              className="border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 hover:bg-white shadow-sm text-sm outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all cursor-pointer"
             >
               {paymentOptions.map(opt => (
                 <option key={opt} value={opt}>
@@ -811,16 +827,16 @@ const OrdersTab: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'))}
-                className="border border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2 bg-white shadow-sm hover:bg-gray-50 text-sm"
+                className="border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-2 bg-gray-50 hover:bg-white shadow-sm text-sm transition-all"
               >
-                <ArrowUpDown size={16} /> {sortDir === 'asc' ? 'Asc' : 'Desc'}
+                <ArrowUpDown size={15} /> {sortDir === 'asc' ? 'Asc' : 'Desc'}
               </button>
 
               <button
                 onClick={fetchOrders}
-                className="bg-gold hover:bg-gold/90 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm text-sm transition-colors"
+                className="bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2 shadow-sm text-sm transition-all active:scale-95"
               >
-                <RefreshCw size={16} /> Actualizar
+                <RefreshCw size={15} /> Actualizar
               </button>
             </div>
           </div>

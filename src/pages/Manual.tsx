@@ -258,7 +258,7 @@ type Mode = "mesa" | "llevar" | "recoger";
 
 const Manual: React.FC<ManualProps> = ({ onOrderSaved }) => {
   // modo
-  const [mode, setMode] = useState<Mode>("mesa");
+  const [mode, setMode] = useState<Mode>("llevar");
   const isTakeaway = mode !== "mesa";
   const hasDelivery = mode === "llevar";
 
@@ -406,7 +406,9 @@ const Manual: React.FC<ManualProps> = ({ onOrderSaved }) => {
 
   useEffect(() => {
     fetchMenu();
-  }, [fetchMenu]);
+    // Iniciar fetchDomicilios porque el modo por defecto es "llevar"
+    fetchDomicilios();
+  }, [fetchMenu, fetchDomicilios]);
 
   useEffect(() => {
     if (mode === "llevar" && domicilios.length === 0 && !loadingDomicilios) {
@@ -1231,14 +1233,27 @@ const Manual: React.FC<ManualProps> = ({ onOrderSaved }) => {
                       className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
                     />
                   </div>
-                  <div className="flex items-center bg-slate-50 rounded-2xl px-3 py-2 border border-slate-200">
-                    <Phone size={14} className="text-slate-400 mr-2" />
+                  <div className="flex items-center bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden">
+                    <Phone size={14} className="text-slate-400 ml-3 shrink-0" />
                     <input
                       value={numero}
                       onChange={(e) => setNumero(e.target.value)}
                       placeholder="Número (opcional)"
-                      className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400"
+                      className="bg-transparent text-sm w-full outline-none text-slate-800 placeholder-slate-400 px-2 py-2"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setNumero(prev => {
+                        const n = prev.trim();
+                        if (!n) return n;
+                        if (n.endsWith('@s.whatsapp.net')) return n;
+                        return n + '@s.whatsapp.net';
+                      })}
+                      className="shrink-0 text-[10px] font-black text-green-700 bg-green-100 hover:bg-green-200 px-2.5 py-2 transition-colors whitespace-nowrap h-full border-l border-slate-200"
+                      title="Agregar @s.whatsapp.net al número"
+                    >
+                      @WA
+                    </button>
                   </div>
                 </div>
 

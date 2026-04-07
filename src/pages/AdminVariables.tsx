@@ -176,40 +176,40 @@ const AdminVariables: React.FC = () => {
   return (
     <div className="max-w-5xl mx-auto pb-20">
       {/* Header Sticky */}
-      <div className="sticky top-24 z-20 bg-white/90 backdrop-blur border-b border-gray-100 -mx-4 px-4 py-4 mb-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">Configuración del Restaurante</h2>
+      <div className="sticky top-14 md:top-14 z-20 bg-white/90 backdrop-blur border-b border-gray-100 -mx-4 px-4 py-4 mb-6 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xl font-black text-gray-900 tracking-tight">Configuración</h2>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={fetchVars}
               className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 p-2 rounded-lg shadow-sm transition-colors"
               disabled={loading || saving || wppLoading}
               title="Recargar datos"
             >
-              <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
             </button>
 
             <button
               onClick={openWppModal}
-              className="px-4 py-2 rounded-lg font-bold shadow-md flex items-center gap-2 transition-all bg-green-600 hover:bg-green-700 text-white disabled:bg-green-300 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg font-bold shadow-md flex items-center gap-2 transition-all bg-green-600 hover:bg-green-700 text-white disabled:bg-green-300 disabled:cursor-not-allowed text-sm"
               disabled={loading || saving || wppLoading}
             >
-              <MessageSquareText size={18} />
+              <MessageSquareText size={16} />
               {wppLoading ? 'Conectando...' : 'Conectar WPP'}
             </button>
 
             <button
               onClick={saveVars}
-              className={`px-6 py-2 rounded-lg font-bold shadow-md flex items-center gap-2 transition-all ${
+              className={`px-5 py-2 rounded-lg font-bold shadow-md flex items-center gap-2 transition-all text-sm ${
                 hasChanges && !saving
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white transform hover:scale-105'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  ? 'bg-gray-900 hover:bg-black text-white transform hover:scale-105'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
               }`}
               disabled={!hasChanges || saving}
             >
-              <Save size={18} />
-              {saving ? 'Guardando...' : 'Guardar Cambios'}
+              <Save size={16} />
+              {saving ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
         </div>

@@ -149,12 +149,12 @@ const AdminDomicilios: React.FC = () => {
 
   return (
     <div className="min-w-0 pb-12">
-      <div className="sticky top-24 z-20 bg-white/90 backdrop-blur border-b border-gray-100 -mx-4 px-4 py-3 mb-4 shadow-sm">
+      <div className="sticky top-14 md:top-14 z-20 bg-white/90 backdrop-blur border-b border-gray-100 -mx-4 px-4 py-4 mb-5 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-gray-900">Zonas y Tarifas</h2>
-            <span className="bg-amber-100 text-amber-800 text-[11px] px-2 py-0.5 rounded-full font-medium">
-              {items.length} Zonas
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-xl font-black text-gray-900 tracking-tight">Zonas de Domicilio</h2>
+            <span className="bg-amber-100 text-amber-800 text-[11px] px-2.5 py-0.5 rounded-full font-bold">
+              {items.length}
             </span>
           </div>
 
@@ -168,7 +168,7 @@ const AdminDomicilios: React.FC = () => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar barrio..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:bg-white shadow-sm pl-9 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all text-sm"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:bg-white shadow-sm pl-9 focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none transition-all text-sm"
                 autoComplete="off"
               />
             </div>
@@ -179,12 +179,12 @@ const AdminDomicilios: React.FC = () => {
               title="Actualizar"
               disabled={loading}
             >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={17} className={loading ? 'animate-spin' : ''} />
             </button>
 
             <button
               onClick={startNew}
-              className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg font-bold shadow-md shadow-amber-500/20 flex items-center gap-2 transition-transform active:scale-95 text-sm"
+              className="bg-gray-900 hover:bg-black text-white px-3 py-2 rounded-lg font-bold shadow-md flex items-center gap-2 transition-all active:scale-95 text-sm"
             >
               <Plus size={16} />
               Nueva Zona

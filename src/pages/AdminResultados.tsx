@@ -451,17 +451,19 @@ const StatCard: React.FC<{
   subtitle?: string;
   icon: React.ReactNode;
 }> = ({ title, value, subtitle, icon }) => (
-  <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3">
-    <div className="flex items-center justify-between mb-1">
-      <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+  <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+    <div className="flex items-center justify-between mb-3 relative z-10">
+      <span className="text-[11px] font-extrabold text-gray-500 uppercase tracking-widest">
         {title}
       </span>
-      {icon}
+      <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 group-hover:scale-110 group-hover:bg-amber-50 group-hover:text-amber-500 transition-all">
+        {icon}
+      </div>
     </div>
-    <div className="text-sm md:text-lg font-semibold text-gray-900 tabular-nums">
+    <div className="text-xl md:text-2xl font-black text-gray-900 tabular-nums tracking-tight relative z-10">
       {value}
     </div>
-    {subtitle && <p className="text-[11px] text-gray-500 mt-1">{subtitle}</p>}
+    {subtitle && <p className="text-[11px] font-medium text-gray-400 mt-2 relative z-10">{subtitle}</p>}
   </div>
 );
 
@@ -472,16 +474,20 @@ const PanelCard: React.FC<{
   right?: React.ReactNode;
   children: React.ReactNode;
 }> = ({ title, icon, description, right, children }) => (
-  <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5 shadow-sm">
-    <div className="flex items-center justify-between mb-3 gap-3">
-      <div className="flex items-center gap-2 min-w-0">
-        {icon}
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-          {description && <p className="text-xs text-gray-500">{description}</p>}
+  <div className="bg-white rounded-3xl border border-gray-100 p-5 md:p-6 shadow-sm">
+    <div className="flex items-center justify-between mb-4 gap-4">
+      <div className="flex items-center gap-3 min-w-0">
+        {icon && (
+          <div className="w-10 h-10 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 shrink-0">
+            {icon}
+          </div>
+        )}
+        <div className="min-w-0 flex flex-col">
+          <h3 className="text-base font-black text-gray-900 tracking-tight">{title}</h3>
+          {description && <p className="text-[11px] font-medium text-gray-500">{description}</p>}
         </div>
       </div>
-      {right}
+      {right && <div className="shrink-0">{right}</div>}
     </div>
     {children}
   </div>
@@ -500,10 +506,10 @@ const RefreshButton: React.FC<{
     onClick={onClick}
     disabled={loading}
     className={cn(
-      'inline-flex items-center gap-2 rounded-xl font-semibold shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed',
+      'inline-flex items-center justify-center gap-2 rounded-xl font-extrabold shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed',
       small
-        ? 'text-xs px-2 py-1 bg-gold text-white hover:bg-gold/90'
-        : 'text-sm px-4 py-2 bg-gold text-white hover:bg-gold/90',
+        ? 'text-xs px-3 py-2.5 bg-amber-100 text-amber-800 hover:bg-amber-200'
+        : 'text-sm px-5 py-3 bg-amber-100 text-amber-800 hover:bg-amber-200',
     )}
     title="Actualizar historial"
   >
@@ -682,36 +688,64 @@ const AdminResultados: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm border border-gray-200">
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveTab('general')}
-            className={cn(
-              'px-4 py-2 rounded-xl text-sm font-semibold border transition',
-              activeTab === 'general'
-                ? 'bg-gold text-white border-gold'
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50',
-            )}
-          >
-            General
-          </button>
+    <div className="min-w-0 relative">
+      {/* Sticky Header */}
+      <div className="sticky top-14 md:top-14 z-20 bg-white/90 backdrop-blur border-b border-gray-100 shadow-sm px-4 py-4 mb-6 -mx-4 transition-all">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex flex-col items-center justify-center text-white shadow-lg shadow-amber-400/30">
+              <BarChart2 size={20} />
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-1.5">
+                Resultados
+              </h2>
+              <span className="text-xs text-gray-500 font-medium tracking-wide">
+                Estadísticas y Análisis de Ventas
+              </span>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setActiveTab('general')}
+              className={cn(
+                'px-5 py-2.5 rounded-2xl text-sm font-extrabold transition-all',
+                activeTab === 'general'
+                  ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50',
+              )}
+            >
+              General
+            </button>
 
-          <button
-            onClick={() => setActiveTab('mes')}
-            className={cn(
-              'px-4 py-2 rounded-xl text-sm font-semibold border transition',
-              activeTab === 'mes'
-                ? 'bg-gold text-white border-gold'
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50',
-            )}
-          >
-            Mes
-          </button>
+            <button
+              onClick={() => setActiveTab('mes')}
+              className={cn(
+                'px-5 py-2.5 rounded-2xl text-sm font-extrabold transition-all',
+                activeTab === 'mes'
+                  ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50',
+              )}
+            >
+              Mes a Mes
+            </button>
+            <RefreshButton
+              onClick={() => fetchHistorial()}
+              loading={loading}
+              small={true}
+            />
+          </div>
         </div>
-
-        {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
       </div>
+
+      {error && (
+        <div className="mb-4 max-w-7xl mx-auto bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-2xl text-sm font-bold shadow-sm">
+          {error}
+        </div>
+      )}
+      
+      <div className="max-w-7xl mx-auto space-y-6">
 
       {activeTab === 'general' && (
         <div className="space-y-6">
@@ -1496,6 +1530,7 @@ const AdminResultados: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

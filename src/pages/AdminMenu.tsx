@@ -33,7 +33,6 @@ const ALMUERZO_EXTRA_SET = new Set(ALMUERZO_EXTRA_NAMES.map(normalizeText));
 const MenuTab: React.FC = () => {
   const [menuItems, setMenuItems] = useState<MenuItemWithRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [bulkUpdatingLunch, setBulkUpdatingLunch] = useState(false);
 
   // Búsqueda / categoría
   const [searchTerm, setSearchTerm] = useState('');
@@ -117,40 +116,7 @@ const MenuTab: React.FC = () => {
     }
   };
 
-  const updateAllLunchAvailability = async (nuevoValor: boolean) => {
-    const lunchItems = menuItems.filter(isLunchGroupedItem);
-    if (!lunchItems.length) return;
 
-    const previousItems = menuItems;
-    const lunchIds = new Set(lunchItems.map(item => String(item.id)));
-
-    setBulkUpdatingLunch(true);
-
-    // Actualización optimista
-    setMenuItems(prev =>
-      prev.map(item =>
-        lunchIds.has(String(item.id)) ? { ...item, disponible: nuevoValor } : item
-      )
-    );
-
-    try {
-      await Promise.all(
-        lunchItems.map(item =>
-          postAvailability({
-            row_number: item.row_number ?? null,
-            id: item.id,
-            disponible: nuevoValor,
-          })
-        )
-      );
-    } catch (error) {
-      console.error(error);
-      setMenuItems(previousItems);
-      alert('No se pudieron actualizar todos los almuerzos. Se revirtieron los cambios.');
-    } finally {
-      setBulkUpdatingLunch(false);
-    }
-  };
 
   const allCategories = useMemo(() => {
     const set = new Set<string>();
@@ -160,12 +126,9 @@ const MenuTab: React.FC = () => {
     return ['Todas', ...Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))];
   }, [menuItems]);
 
-  const lunchGroupedItems = useMemo(() => {
-    return menuItems.filter(isLunchGroupedItem);
-  }, [menuItems]);
 
-  const allLunchOff =
-    lunchGroupedItems.length > 0 && lunchGroupedItems.every(item => !item.disponible);
+
+
 
   const visibleMenuItems = useMemo(() => {
     const normalizedTerm = normalizeText(searchTerm);
@@ -222,10 +185,10 @@ const MenuTab: React.FC = () => {
     <div className="flex flex-col lg:flex-row lg:items-start gap-4">
       {/* === BARRA LATERAL / SUPERIOR DE FILTROS === */}
       <aside className="lg:w-56 shrink-0 lg:self-start">
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 sticky top-20 lg:top-24 max-h-[calc(100vh-6rem)] overflow-y-auto">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 sticky top-[70px] lg:top-[70px] max-h-[calc(100vh-5rem)] overflow-y-auto">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
-              <Filter size={16} className="text-gold" /> Filtros
+            <h3 className="font-black text-gray-800 flex items-center gap-2 text-sm tracking-tight">
+              <Filter size={15} className="text-amber-500" /> Filtros
             </h3>
             <button
               onClick={forceFetchMenuItems}
@@ -235,7 +198,7 @@ const MenuTab: React.FC = () => {
               }`}
               title="Actualizar menú"
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={15} />
             </button>
           </div>
 
@@ -302,24 +265,7 @@ const MenuTab: React.FC = () => {
           </h2>
 
           <div className="flex items-center gap-3 flex-wrap">
-            {isAlmuerzoView && lunchGroupedItems.length > 0 && (
-              <button
-                onClick={() => updateAllLunchAvailability(allLunchOff)}
-                disabled={bulkUpdatingLunch || loading}
-                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-gold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                title={
-                  allLunchOff
-                    ? 'Encender todos los almuerzos'
-                    : 'Apagar todos los almuerzos'
-                }
-              >
-                {bulkUpdatingLunch
-                  ? 'Guardando...'
-                  : allLunchOff
-                  ? 'Encender todos los almuerzos'
-                  : 'Apagar todos los almuerzos'}
-              </button>
-            )}
+
 
             <div className="hidden sm:flex gap-3 text-[11px] text-gray-500">
               <div className="flex items-center gap-1">

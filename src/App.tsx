@@ -6,20 +6,18 @@ import MenuList from './components/MenuList';
 import Cart from './components/Cart';
 import Footer from './components/Footer';
 import Admin from './pages/Admin';
-import ScannerEnCaminoPage from './pages/ScannerEnCaminoPage';
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/admin" element={
+        <Route path="/admin/*" element={
           <MenuProvider>
             <CartProvider>
               <Admin />
             </CartProvider>
           </MenuProvider>
         } />
-        <Route path="/scan" element={<ScannerEnCaminoPage />} />
 
         {/* ----------------------- */}
 

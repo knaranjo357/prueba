@@ -12,7 +12,8 @@ import {
   Minus,
   Plus,
   Search,
-  ArrowUpDown
+  ArrowUpDown,
+  MessageSquare,
 } from 'lucide-react';
 
 /** TIPOS */
@@ -41,6 +42,7 @@ export type CartItem = {
   name: string;
   quantity: number;
   priceUnit: number;
+  notes?: string;
 };
 
 /** HELPERS UI */
@@ -53,7 +55,17 @@ const cleanPhone = (raw: unknown) => {
       : raw;
 
   const s = String(v ?? '');
+  // Limpiar sufijo @s.whatsapp.net y caracteres no numéricos
   return s.replace(/@s\.whatsapp\.net$/i, '').replace(/[^0-9+]/g, '');
+};
+
+// Retorna el número raw legible (sin limpiar) para mostrar en edición
+const getRawPhone = (raw: unknown): string => {
+  const v =
+    raw && typeof raw === 'object'
+      ? (raw as any).numero ?? (raw as any).value ?? (raw as any).phone ?? ''
+      : raw;
+  return String(v ?? '').trim();
 };
 
 const paymentMethods = [
@@ -78,56 +90,64 @@ const getStatusUI = (estado?: string) => {
 
   if (s === 'pidiendo') {
     return {
-      card: 'bg-yellow-50 border-yellow-300 shadow-yellow-100',
-      badge: 'bg-yellow-100 text-yellow-800 ring-1 ring-yellow-300'
+      card: 'bg-yellow-50 border-yellow-200 shadow-yellow-50',
+      badge: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
+      dot: 'bg-yellow-400'
     };
   }
 
   if (s === 'confirmado') {
     return {
-      card: 'bg-orange-50 border-orange-300 shadow-orange-100',
-      badge: 'bg-orange-100 text-orange-800 ring-1 ring-orange-300'
+      card: 'bg-orange-50 border-orange-200 shadow-orange-50',
+      badge: 'bg-orange-100 text-orange-800 border border-orange-200',
+      dot: 'bg-orange-500'
     };
   }
 
   if (s === 'impreso') {
     return {
-      card: 'bg-blue-50 border-blue-300 shadow-blue-100',
-      badge: 'bg-blue-100 text-blue-800 ring-1 ring-blue-300'
+      card: 'bg-sky-50 border-sky-200 shadow-sky-50',
+      badge: 'bg-sky-100 text-sky-800 border border-sky-200',
+      dot: 'bg-sky-500'
     };
   }
 
   if (s === 'preparando') {
     return {
-      card: 'bg-indigo-50 border-indigo-300 shadow-indigo-100',
-      badge: 'bg-indigo-100 text-indigo-800 ring-1 ring-indigo-300'
+      card: 'bg-violet-50 border-violet-200 shadow-violet-50',
+      badge: 'bg-violet-100 text-violet-800 border border-violet-200',
+      dot: 'bg-violet-500'
     };
   }
 
   if (s === 'en camino') {
     return {
-      card: 'bg-cyan-50 border-cyan-300 shadow-cyan-100',
-      badge: 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-300'
+      card: 'bg-cyan-50 border-cyan-200 shadow-cyan-50',
+      badge: 'bg-cyan-100 text-cyan-800 border border-cyan-200',
+      dot: 'bg-cyan-500'
     };
   }
 
   if (s === 'entregado') {
     return {
-      card: 'bg-green-50 border-green-300 shadow-green-100',
-      badge: 'bg-green-100 text-green-800 ring-1 ring-green-300'
+      card: 'bg-emerald-50 border-emerald-200 shadow-emerald-50',
+      badge: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+      dot: 'bg-emerald-500'
     };
   }
 
   if (s === 'con problema') {
     return {
-      card: 'bg-pink-50 border-pink-400 shadow-pink-100',
-      badge: 'bg-pink-200 text-pink-900 ring-1 ring-pink-400'
+      card: 'bg-rose-50 border-rose-300 shadow-rose-50',
+      badge: 'bg-rose-100 text-rose-800 border border-rose-300',
+      dot: 'bg-rose-500'
     };
   }
 
   return {
-    card: 'bg-white border-gray-200 shadow-gray-100',
-    badge: 'bg-gray-100 text-gray-800 ring-1 ring-gray-300'
+    card: 'bg-white border-gray-200 shadow-gray-50',
+    badge: 'bg-gray-100 text-gray-700 border border-gray-200',
+    dot: 'bg-gray-400'
   };
 };
 
@@ -255,232 +275,232 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
   onPaymentMethodChange
 }) => {
   const phone = cleanPhone(order?.numero ?? '');
+  const rawPhone = getRawPhone(order?.numero ?? '');
   const ui = getStatusUI(order.estado);
   const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
 
   // === MODO EDICIÓN ===
   if (isEditing) {
     return (
-      <div className="md:col-span-2 xl:col-span-3 bg-white border-2 border-gold rounded-xl shadow-2xl relative overflow-hidden ring-4 ring-gold/10 z-30">
-        <div className="absolute top-0 left-0 w-full h-1.5 bg-gold"></div>
+      <div className="md:col-span-2 xl:col-span-3 bg-white border-2 border-amber-400 rounded-2xl shadow-2xl relative overflow-hidden ring-4 ring-amber-400/10 z-30">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 to-orange-400" />
 
-        <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50/50 sticky top-0 z-20">
-          <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-full bg-gold text-white flex items-center justify-center text-sm">
+        {/* Header del editor */}
+        <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100 bg-white sticky top-0 z-20">
+          <h3 className="font-black text-gray-900 flex items-center gap-2.5">
+            <span className="w-7 h-7 rounded-full bg-amber-400 text-white flex items-center justify-center text-xs font-black">
               #{order.row_number}
             </span>
-            Editando
+            Editando pedido
           </h3>
           <button
             onClick={onCancelEdit}
             className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors"
           >
-            <X size={24} />
+            <X size={20} />
           </button>
         </div>
 
         <div className="flex flex-col lg:grid lg:grid-cols-12 lg:gap-0">
-          {/* Columna Izquierda */}
-          <div className="order-1 lg:col-span-4 p-4 space-y-4 border-b lg:border-b-0 lg:border-r border-gray-100 bg-white">
+          {/* ─ Col. Izquierda: datos del cliente ─ */}
+          <div className="order-1 lg:col-span-4 p-4 space-y-3.5 border-b lg:border-b-0 lg:border-r border-gray-100 bg-white">
+
+            {/* Nombre */}
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 ml-1">
-                Cliente
-              </label>
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-gold/20 focus-within:border-gold transition-all">
-                <User size={18} className="text-gray-400" />
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Cliente</label>
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-amber-400/30 focus-within:border-amber-400 transition-all">
+                <User size={16} className="text-gray-400 shrink-0" />
                 <input
                   value={editNombre}
                   onChange={e => setEditNombre(e.target.value)}
-                  className="bg-transparent w-full outline-none text-sm font-medium text-gray-700 break-words"
+                  className="bg-transparent w-full outline-none text-sm font-medium text-gray-800"
                   placeholder="Nombre del cliente"
                 />
               </div>
-
-              {phone && (
-                <div className="mt-2 ml-1 flex items-center gap-2 text-sm text-gray-600">
-                  <Phone size={14} className="text-green-600" />
-                  <span className="font-semibold break-all">{phone}</span>
-                </div>
-              )}
             </div>
 
+            {/* Teléfono — completo y clicable */}
+            {rawPhone && (
+              <div className="bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-200">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Teléfono / WhatsApp</p>
+                <div className="flex items-center gap-2">
+                  <Phone size={14} className="text-green-600 shrink-0" />
+                  <span className="text-sm font-mono font-semibold text-gray-700 break-all select-all">{rawPhone}</span>
+                  {phone && (
+                    <a
+                      href={`https://wa.me/${phone}`}
+                      target="_blank"
+                      rel="noopener"
+                      className="ml-auto shrink-0 text-[10px] font-bold text-green-700 bg-green-100 hover:bg-green-200 px-2 py-0.5 rounded-full transition-colors"
+                    >
+                      WA ↗
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Dirección / Notas del pedido */}
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 ml-1">
-                Dirección / Notas
-              </label>
-              <div className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-gold/20 focus-within:border-gold transition-all">
-                <MapPin size={18} className="text-gray-400 mt-1" />
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Dirección / Notas</label>
+              <div className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-amber-400/30 focus-within:border-amber-400 transition-all">
+                <MapPin size={16} className="text-gray-400 mt-0.5 shrink-0" />
                 <textarea
                   value={editDireccion}
                   onChange={e => setEditDireccion(e.target.value)}
-                  className="bg-transparent w-full outline-none text-sm text-gray-700 resize-none break-words"
+                  className="bg-transparent w-full outline-none text-sm text-gray-700 resize-none"
                   rows={3}
-                  placeholder="Dirección de entrega y notas..."
+                  placeholder="Dirección de entrega y notas del pedido..."
                 />
               </div>
             </div>
 
+            {/* Pago + Domicilio */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 ml-1">
-                  Pago
-                </label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Pago</label>
                 <div className="relative">
                   <select
                     value={editMetodoPago}
                     onChange={e => setEditMetodoPago(e.target.value)}
-                    className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 pr-9 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
+                    className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 pr-9 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all"
                   >
                     {paymentMethods.map(method => (
-                      <option key={method} value={method}>
-                        {method}
-                      </option>
+                      <option key={method} value={method}>{method}</option>
                     ))}
                   </select>
-                  <ArrowUpDown
-                    size={14}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                  />
+                  <ArrowUpDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 ml-1">
-                  Domicilio ($)
-                </label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Domicilio ($)</label>
                 <input
                   type="number"
                   value={editValorDom}
                   onChange={e => setEditValorDom(parseInt(e.target.value || '0', 10))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-right"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none font-semibold text-right focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all"
                 />
               </div>
             </div>
 
-            <div className="pt-6 mt-2">
-              <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-100">
-                <div className="flex justify-between items-center text-sm text-gray-500 mb-1">
-                  <span>Restaurante</span>
-                  <span>{money(editValorRest)}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm text-gray-500 mb-3 border-b border-amber-200 pb-2">
-                  <span>Domicilio</span>
-                  <span>{money(editValorDom)}</span>
-                </div>
-                <div className="flex justify-between items-center text-xl font-bold text-gray-800">
-                  <span>Total</span>
-                  <span>{money(editValorRest + editValorDom)}</span>
-                </div>
+            {/* Resumen de totales */}
+            <div className="bg-amber-50 rounded-xl p-3.5 border border-amber-100">
+              <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
+                <span>Restaurante</span>
+                <span className="font-semibold">{money(editValorRest)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-gray-500 mb-2.5 border-b border-amber-200 pb-2">
+                <span>Domicilio</span>
+                <span className="font-semibold">{money(editValorDom)}</span>
+              </div>
+              <div className="flex justify-between items-center font-black text-gray-900">
+                <span className="text-sm">Total</span>
+                <span className="text-xl">{money(editValorRest + editValorDom)}</span>
               </div>
             </div>
           </div>
 
-          {/* Columna Derecha */}
+          {/* ─ Col. Derecha: productos ─ */}
           <div className="order-2 lg:col-span-8 flex flex-col bg-gray-50/30">
-            <div className="p-3 bg-white border-b border-gray-100 flex items-center justify-between shadow-sm z-10 sticky top-0 lg:static">
-              <span className="font-bold text-gray-700 flex items-center gap-2 text-sm">
-                <ShoppingBasket size={18} className="text-gold" /> Productos
+            <div className="p-3 bg-white border-b border-gray-100 flex items-center justify-between">
+              <span className="font-black text-gray-800 text-sm flex items-center gap-2">
+                <ShoppingBasket size={16} className="text-amber-500" />
+                Productos del pedido
               </span>
-              <span className="text-xs font-bold bg-gold/10 text-gold px-2 py-1 rounded-md">
-                {cartItems.length}
+              <span className="text-xs font-black bg-amber-100 text-amber-700 px-2 py-1 rounded-lg">
+                {cartItems.reduce((s, i) => s + i.quantity, 0)} unid.
               </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-[300px] lg:max-h-none min-h-[150px]">
+            {/* Lista del carrito con nota por ítem */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-[320px] lg:max-h-[260px] min-h-[100px]">
               {cartItems.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-32 text-gray-400 opacity-60">
-                  <ShoppingBasket size={32} className="mb-2" />
+                <div className="flex flex-col items-center justify-center h-28 text-gray-400 opacity-60">
+                  <ShoppingBasket size={28} className="mb-2" />
                   <p className="text-sm">Carrito vacío</p>
                 </div>
               )}
 
               {cartItems.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 shadow-sm group hover:border-gold/30 transition-colors"
-                >
-                  <div className="flex justify-between items-start w-full sm:w-auto sm:flex-1 sm:order-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-gray-800 break-words leading-tight">
-                        {item.name}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">{money(item.priceUnit)}</p>
-                    </div>
-
-                    <button
-                      onClick={() => setCartItems(prev => prev.filter((_, i) => i !== idx))}
-                      className="sm:hidden text-gray-300 hover:text-red-500 p-1 -mr-1 -mt-1 shrink-0"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between w-full sm:w-auto sm:shrink-0 sm:order-1 gap-4">
+                <div key={idx} className="bg-white rounded-xl border border-gray-200 hover:border-amber-200 transition-colors overflow-hidden">
+                  {/* Fila principal: cantidad + nombre + precio + eliminar */}
+                  <div className="flex items-center gap-2 p-2.5">
+                    {/* Controles de cantidad */}
                     <div className="flex items-center border border-gray-200 rounded-lg bg-gray-50 h-8 shrink-0">
                       <button
                         onClick={() => decreaseItem(idx)}
                         className="w-8 h-full flex items-center justify-center hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-l-lg transition-colors"
                       >
-                        <Minus size={14} />
+                        <Minus size={13} />
                       </button>
-                      <span className="w-8 text-center font-bold text-sm bg-white h-full flex items-center justify-center border-x border-gray-200">
+                      <span className="w-7 text-center font-black text-sm bg-white h-full flex items-center justify-center border-x border-gray-200">
                         {item.quantity}
                       </span>
                       <button
-                        onClick={() =>
-                          addItemToCart({ nombre: item.name, valor: item.priceUnit } as any)
-                        }
+                        onClick={() => addItemToCart({ nombre: item.name, valor: item.priceUnit } as any)}
                         className="w-8 h-full flex items-center justify-center hover:bg-green-50 text-gray-500 hover:text-green-500 rounded-r-lg transition-colors"
                       >
-                        <Plus size={14} />
+                        <Plus size={13} />
                       </button>
                     </div>
 
-                    <div className="text-right sm:hidden">
-                      <p className="text-sm font-bold text-gray-800">
-                        {money(item.quantity * item.priceUnit)}
-                      </p>
+                    {/* Nombre */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-800 truncate leading-tight">{item.name}</p>
+                      <p className="text-xs text-gray-400">{money(item.priceUnit)} c/u</p>
                     </div>
-                  </div>
 
-                  <div className="hidden sm:flex items-center gap-3 text-right shrink-0 sm:order-3">
-                    <p className="text-sm font-bold text-gray-800">
-                      {money(item.quantity * item.priceUnit)}
-                    </p>
+                    {/* Total ítem */}
+                    <p className="text-sm font-black text-gray-900 shrink-0">{money(item.quantity * item.priceUnit)}</p>
+
+                    {/* Eliminar */}
                     <button
                       onClick={() => setCartItems(prev => prev.filter((_, i) => i !== idx))}
-                      className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
+                      className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
                     >
-                      <X size={16} />
+                      <X size={14} />
                     </button>
+                  </div>
+
+                  {/* Fila de nota — siempre visible */}
+                  <div className="px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 bg-amber-50/60 border border-amber-100 rounded-lg px-2.5 py-1.5 focus-within:border-amber-300 focus-within:bg-amber-50 transition-all">
+                      <MessageSquare size={11} className="text-amber-400 shrink-0" />
+                      <input
+                        type="text"
+                        value={item.notes || ''}
+                        onChange={e => setCartItems(prev =>
+                          prev.map((x, i) => i === idx ? { ...x, notes: e.target.value } : x)
+                        )}
+                        placeholder="Nota para este ítem (ej: sin cebolla)"
+                        className="w-full bg-transparent outline-none text-xs text-gray-600 placeholder:text-amber-400/70 font-medium"
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="border-t border-gray-200 bg-white p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
-              <div className="relative mb-3">
-                <Search
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+            {/* Buscar y agregar productos */}
+            <div className="border-t border-gray-200 bg-white p-3">
+              <div className="relative mb-2.5">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   value={menuSearch}
                   onChange={e => setMenuSearch(e.target.value)}
-                  placeholder="Buscar..."
-                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-gold/30 focus:border-gold outline-none bg-gray-50 focus:bg-white transition-all"
+                  placeholder="Buscar producto..."
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none bg-gray-50 focus:bg-white transition-all"
                 />
               </div>
 
-              <div className="flex gap-2 overflow-x-auto pb-3 mb-1 scrollbar-hide">
+              <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-hide">
                 {categories.map(c => (
                   <button
                     key={c}
                     onClick={() => setMenuCat(c)}
-                    className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-bold transition-colors ${
-                      menuCat === c
-                        ? 'bg-gray-800 text-white shadow-md'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap font-bold transition-colors ${
+                      menuCat === c ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
                     {c}
@@ -488,35 +508,32 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
                 ))}
               </div>
 
-              <div className="h-60 lg:h-32 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2 pr-1">
+              <div className="h-48 lg:h-28 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1.5 pr-0.5">
                 {filteredMenu.map(m => (
                   <button
                     key={m.id}
                     onClick={() => addItemToCart(m)}
-                    className="text-left bg-white border border-gray-200 p-2.5 rounded-xl hover:border-gold hover:shadow-md transition-all group flex flex-col justify-between h-full active:scale-95"
+                    className="text-left bg-white border border-gray-200 p-2 rounded-xl hover:border-amber-400 hover:shadow-sm transition-all flex flex-col justify-between active:scale-95"
                   >
-                    <p className="text-xs font-bold text-gray-700 line-clamp-2 group-hover:text-gold mb-1 break-words">
-                      {m.nombre}
-                    </p>
-                    <p className="text-[10px] font-medium text-gray-500 bg-gray-50 inline-block px-1.5 py-0.5 rounded self-start">
-                      {money(m.valor)}
-                    </p>
+                    <p className="text-xs font-bold text-gray-700 line-clamp-2 group-hover:text-amber-600 leading-tight break-words">{m.nombre}</p>
+                    <p className="text-[10px] font-semibold text-gray-400 mt-1">{money(m.valor)}</p>
                   </button>
                 ))}
               </div>
 
-              <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-100 pb-2 lg:pb-0">
+              {/* Botones guardar / cancelar */}
+              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
                 <button
                   onClick={onCancelEdit}
-                  className="px-5 py-2.5 text-gray-600 hover:bg-gray-100 rounded-xl font-medium transition-colors"
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl font-semibold text-sm transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={() => onSaveEdit(order)}
-                  className="flex-1 lg:flex-none justify-center px-6 py-2.5 bg-gold hover:bg-gold/90 text-white rounded-xl font-bold shadow-lg shadow-gold/20 flex items-center gap-2 transform active:scale-95 transition-all"
+                  className="flex-1 justify-center px-5 py-2.5 bg-gray-900 hover:bg-black text-white rounded-xl font-black flex items-center gap-2 text-sm shadow-lg active:scale-95 transition-all"
                 >
-                  <Save size={18} /> Guardar
+                  <Save size={16} /> Guardar cambios
                 </button>
               </div>
             </div>
@@ -532,88 +549,47 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
   return (
     <div
       id={`pedido-${order.row_number}`}
-      className={`rounded-xl border-2 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${ui.card}`}
+      className={`rounded-2xl border-2 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${ui.card}`}
     >
-      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
-        <div className="flex-1 w-full">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="font-mono text-sm font-bold text-gray-500 bg-white/50 px-2 py-0.5 rounded border border-gray-200/50">
-              #{order.row_number}
-            </span>
-            <span
-              className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${ui.badge}`}
-            >
-              {order.estado}
-            </span>
-          </div>
+      {/* Header: número + estado */}
+      <div className="flex items-center gap-2.5 mb-3">
+        <span className="font-mono text-xs font-bold text-gray-500 bg-white/70 px-2 py-0.5 rounded-lg border border-gray-200/60">
+          #{order.row_number}
+        </span>
+        <span
+          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${ui.badge}`}
+        >
+          {order.estado}
+        </span>
+      </div>
 
-          <div className="mb-1">
-            <div className="flex items-center gap-2 text-gray-900 font-black text-xl leading-tight">
-              <span className="break-words">{order.nombre || 'Cliente'}</span>
-            </div>
+      {/* Nombre + teléfono + dirección */}
+      <div className="mb-4">
+        <p className="font-black text-gray-900 text-xl leading-tight break-words mb-2">
+          {order.nombre || 'Cliente'}
+        </p>
 
-            {phone && (
-              <div className="mt-2 flex items-center gap-2 flex-wrap">
-                <a
-                  href={`https://wa.me/${phone}`}
-                  target="_blank"
-                  rel="noopener"
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-green-700 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors"
-                  title="Abrir WhatsApp"
-                >
-                  <Phone size={16} />
-                  <span className="break-all">{phone}</span>
-                </a>
-              </div>
-            )}
-          </div>
+        {phone && (
+          <a
+            href={`https://wa.me/${phone}`}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-green-700 hover:text-green-800 bg-green-50 hover:bg-green-100 px-2.5 py-1 rounded-lg transition-colors mb-2"
+            title="Abrir WhatsApp"
+          >
+            <Phone size={14} />
+            <span className="break-all">{phone}</span>
+          </a>
+        )}
 
-          <div className="flex flex-col gap-1 mt-2">
-            <p className="text-sm text-gray-600 flex items-start gap-1.5 font-medium">
-              <MapPin size={14} className="mt-0.5 shrink-0 text-gray-400" />
-              <span className="break-words">{order.direccion || 'Sin dirección'}</span>
-            </p>
-            <p className="text-xs text-gray-400 flex items-center gap-1.5">
-              <Clock size={12} /> {order.fecha}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-end gap-3 w-full sm:w-auto">
-          <div className="bg-white/60 p-3 rounded-xl border border-gray-100/50 backdrop-blur-sm w-full sm:w-auto min-w-[140px]">
-            <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
-              <span>Rest:</span>
-              <span>{money(order.valor_restaurante)}</span>
-            </div>
-            <div className="flex justify-between items-center text-xs text-gray-500 mb-1 pb-1 border-b border-gray-200/50">
-              <span>Dom:</span>
-              <span>{money(order.valor_domicilio)}</span>
-            </div>
-            <div className="flex justify-between items-center mt-1">
-              <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                Total
-              </span>
-              <span className="text-lg font-black text-gray-900 leading-none">
-                {money(total)}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex gap-2 w-full sm:w-auto">
-            <button
-              onClick={() => onStartEdit(order)}
-              className="flex-1 sm:flex-none justify-center px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-            >
-              Editar
-            </button>
-            <button
-              onClick={() => onPrint(order)}
-              className="flex-1 sm:flex-none justify-center px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-bold hover:bg-black flex items-center gap-2 shadow-md transform active:scale-95 transition-all"
-            >
-              <Printer size={16} /> Imprimir
-            </button>
-          </div>
-        </div>
+        <p className="text-sm text-gray-600 flex items-start gap-1.5 font-medium">
+          <MapPin size={13} className="mt-0.5 shrink-0 text-gray-400" />
+          <span className="break-words">{order.direccion || 'Sin dirección'}</span>
+        </p>
+        <p className="text-xs text-gray-400 flex items-center gap-1.5 mt-1">
+          <Clock size={11} />
+          {order.fecha}
+        </p>
       </div>
 
       <div className="bg-white/60 rounded-xl border border-gray-200/60 p-1 overflow-hidden text-sm shadow-sm">
@@ -643,44 +619,70 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
         )}
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="relative group">
-          <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-            <CreditCard size={12} />
+      {/* Botones de acción */}
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => onStartEdit(order)}
+          className="flex-1 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95"
+        >
+          Editar
+        </button>
+        <button
+          onClick={() => onPrint(order)}
+          className="flex-1 px-3 py-2 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+        >
+          <Printer size={15} /> Imprimir
+        </button>
+      </div>
+
+      {/* Resumen financiero + botones */}
+      <div className="mt-3 flex items-start gap-3">
+        {/* Totales compactos */}
+        <div className="bg-white/80 rounded-xl border border-gray-200/60 px-3 py-2 flex-1 min-w-[130px]">
+          <div className="flex justify-between items-center text-xs text-gray-500 mb-0.5">
+            <span>Rest</span>
+            <span className="font-semibold">{money(order.valor_restaurante)}</span>
           </div>
-          <select
-            value={order.metodo_pago || 'efectivo'}
-            onChange={e => onPaymentMethodChange(order, e.target.value)}
-            className="text-xs appearance-none bg-white/80 hover:bg-white border border-gray-200 hover:border-gray-300 rounded-lg pl-7 pr-8 py-1.5 font-bold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-gold/50 outline-none"
-          >
-            {paymentMethods.map(method => (
-              <option key={method} value={method}>
-                {method}
-              </option>
-            ))}
-          </select>
-          <ArrowUpDown
-            size={12}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none opacity-50"
-          />
+          <div className="flex justify-between items-center text-xs text-gray-500 mb-1.5 pb-1.5 border-b border-gray-100">
+            <span>Dom</span>
+            <span className="font-semibold">{money(order.valor_domicilio)}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Total</span>
+            <span className="text-base font-black text-gray-900">{money(total)}</span>
+          </div>
         </div>
 
-        <div className="relative group">
-          <select
-            value={order.estado}
-            onChange={(e) => onStatusChange(order, e.target.value)}
-            className="text-xs appearance-none bg-gray-100 hover:bg-gray-200 border border-transparent hover:border-gray-300 rounded-lg px-3 py-1.5 font-bold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-gold/50 outline-none pr-8"
-          >
-            {allowedStatuses.map(st => (
-              <option key={st} value={st}>
-                {st}
-              </option>
-            ))}
-          </select>
-          <ArrowUpDown
-            size={12}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none opacity-50"
-          />
+        {/* Controles de estado y pay */}
+        <div className="flex flex-col gap-2 shrink-0">
+          <div className="relative">
+            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+              <CreditCard size={11} />
+            </div>
+            <select
+              value={order.metodo_pago || 'efectivo'}
+              onChange={e => onPaymentMethodChange(order, e.target.value)}
+              className="text-xs appearance-none bg-white/80 hover:bg-white border border-gray-200 hover:border-gray-300 rounded-lg pl-6 pr-7 py-1.5 font-semibold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 outline-none"
+            >
+              {paymentMethods.map(method => (
+                <option key={method} value={method}>{method}</option>
+              ))}
+            </select>
+            <ArrowUpDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          <div className="relative">
+            <select
+              value={order.estado}
+              onChange={(e) => onStatusChange(order, e.target.value)}
+              className="text-xs appearance-none bg-gray-100 hover:bg-gray-200 border border-transparent hover:border-gray-300 rounded-lg px-3 py-1.5 font-semibold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 outline-none pr-7 w-full"
+            >
+              {allowedStatuses.map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
+            <ArrowUpDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
         </div>
       </div>
     </div>
