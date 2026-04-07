@@ -1222,7 +1222,7 @@ const AdminResultados: React.FC = () => {
                                 }
                                 return [formatCOP(Number(value)), name];
                               }}
-                              labelFormatter={(_label: string, payload: any[]) => {
+                              labelFormatter={(_label: string, payload: any) => {
                                 const fullLabel = payload?.[0]?.payload?.fullLabel;
                                 return fullLabel ? `Día: ${fullLabel}` : 'Día';
                               }}
@@ -1257,7 +1257,7 @@ const AdminResultados: React.FC = () => {
                             <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                             <Tooltip
                               formatter={(value: number | string) => Number(value)}
-                              labelFormatter={(_label: string, payload: any[]) => {
+                              labelFormatter={(_label: string, payload: any) => {
                                 const current = payload?.[0]?.payload;
                                 if (!current) return 'Día';
                                 return current.isClosed

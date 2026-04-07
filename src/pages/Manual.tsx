@@ -851,14 +851,27 @@ const Manual: React.FC<ManualProps> = ({ onOrderSaved }) => {
               </div>
 
               <div className="flex items-center gap-2 w-full">
-                <div className="relative w-full">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <div className="relative w-full group">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-amber-500 transition-colors" size={18} />
                   <input
+                    id="search-manual"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Buscar (almuerzo, piquete, sopa, mojarra...)"
-                    className="w-full pl-9 pr-4 py-2.5 [@media(max-height:820px)]:py-2 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-amber-500/40 outline-none text-sm"
+                    className="w-full pl-9 pr-10 py-2.5 [@media(max-height:820px)]:py-2 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-amber-500/40 outline-none text-sm transition-all"
                   />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchTerm('');
+                        setTimeout(() => document.getElementById('search-manual')?.focus(), 0);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 bg-transparent border-none outline-none p-1 rounded-full hover:bg-slate-200 transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </div>
 
                 <button

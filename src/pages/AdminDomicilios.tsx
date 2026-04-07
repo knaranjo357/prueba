@@ -165,12 +165,25 @@ const AdminDomicilios: React.FC = () => {
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-amber-500 transition-colors"
               />
               <input
+                id="search-domicilios"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar barrio..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:bg-white shadow-sm pl-9 focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none transition-all text-sm"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:bg-white shadow-sm pl-9 pr-9 focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none transition-all text-sm"
                 autoComplete="off"
               />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setTimeout(() => document.getElementById('search-domicilios')?.focus(), 0);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100"
+                >
+                  <X size={15} />
+                </button>
+              )}
             </div>
 
             <button

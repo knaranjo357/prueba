@@ -182,9 +182,9 @@ const MenuTab: React.FC = () => {
   const isAlmuerzoView = normalizeText(selectedCategory) === 'almuerzo';
 
   return (
-    <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+    <div className="flex flex-col lg:flex-row gap-4">
       {/* === BARRA LATERAL / SUPERIOR DE FILTROS === */}
-      <aside className="lg:w-56 shrink-0 lg:self-start">
+      <aside className="lg:w-56 shrink-0">
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 sticky top-[70px] lg:top-[70px] max-h-[calc(100vh-5rem)] overflow-y-auto">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-black text-gray-800 flex items-center gap-2 text-sm tracking-tight">
@@ -209,6 +209,7 @@ const MenuTab: React.FC = () => {
               size={16}
             />
             <input
+              id="search-menu"
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -217,7 +218,11 @@ const MenuTab: React.FC = () => {
             />
             {searchTerm && (
               <button
-                onClick={clearSearch}
+                type="button"
+                onClick={() => {
+                  clearSearch();
+                  setTimeout(() => document.getElementById('search-menu')?.focus(), 0);
+                }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-200 text-gray-500"
                 title="Limpiar búsqueda"
               >

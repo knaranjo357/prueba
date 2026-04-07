@@ -484,14 +484,27 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
 
             {/* Buscar y agregar productos */}
             <div className="border-t border-gray-200 bg-white p-3">
-              <div className="relative mb-2.5">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <div className="relative mb-2.5 group">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-amber-500 transition-colors" />
                 <input
+                  id={`search-menu-pedido-${order.row_number}`}
                   value={menuSearch}
                   onChange={e => setMenuSearch(e.target.value)}
                   placeholder="Buscar producto..."
-                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none bg-gray-50 focus:bg-white transition-all"
+                  className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none bg-gray-50 focus:bg-white transition-all"
                 />
+                {menuSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuSearch('');
+                      setTimeout(() => document.getElementById(`search-menu-pedido-${order.row_number}`)?.focus(), 0);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
 
               <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-hide">

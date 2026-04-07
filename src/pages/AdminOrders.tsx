@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, ArrowUpDown } from 'lucide-react';
+import { RefreshCw, ArrowUpDown, Search, X } from 'lucide-react';
 import TarjetaPedido, { Order, CartItem, MenuItem } from './TarjetaPedido';
 import JsBarcode from 'jsbarcode';
 
@@ -385,6 +385,7 @@ const OrdersTab: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('todos');
   const [filterPayment, setFilterPayment] = useState<string>('todos');
+  const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'fecha' | 'row_number'>('row_number');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -766,10 +767,26 @@ const OrdersTab: React.FC = () => {
   }, [orders]);
 
   const filteredOrders = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
     const byFilters = orders.filter(order => {
       const statusMatch = filterStatus === 'todos' || order.estado === filterStatus;
       const paymentMatch = filterPayment === 'todos' || order.metodo_pago === filterPayment;
-      return statusMatch && paymentMatch;
+
+      let searchMatch = true;
+      if (q) {
+        const idStr = String(order.row_number || '').toLowerCase();
+        const numStr = String(order.numero || '').toLowerCase();
+        const nomStr = String(order.nombre || '').toLowerCase();
+        const valRestStr = String(order.valor_restaurante || '').toLowerCase();
+        const valDomStr = String(order.valor_domicilio || '').toLowerCase();
+        const totalStr = String((order.valor_restaurante || 0) + (order.valor_domicilio || 0)).toLowerCase();
+        const detailsStr = String(order['detalle pedido'] || '').toLowerCase();
+
+        searchMatch = idStr.includes(q) || numStr.includes(q) || nomStr.includes(q) || 
+                      valRestStr.includes(q) || valDomStr.includes(q) || totalStr.includes(q) || detailsStr.includes(q);
+      }
+
+      return statusMatch && paymentMatch && searchMatch;
     });
 
     return [...byFilters].sort((a, b) => {
@@ -785,7 +802,7 @@ const OrdersTab: React.FC = () => {
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [orders, filterStatus, filterPayment, sortBy, sortDir]);
+  }, [orders, filterStatus, filterPayment, sortBy, sortDir, searchQuery]);
 
   return (
     <div className="min-w-0">
@@ -799,7 +816,31 @@ const OrdersTab: React.FC = () => {
             </span>
           </h2>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            {/* Buscador de pedidos */}
+            <div className="relative flex-1 md:flex-none min-w-[200px] group">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-amber-500 transition-colors" />
+              <input
+                id="search-pedidos"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar pedido..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:bg-white shadow-sm pl-10 pr-10 focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none transition-all text-sm"
+                autoComplete="off"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setTimeout(() => document.getElementById('search-pedidos')?.focus(), 0);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors bg-transparent border-none outline-none p-1 rounded-full hover:bg-gray-100"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}

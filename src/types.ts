@@ -1,5 +1,12 @@
-@@ .. @@
- export interface City {
+export type MenuItem = {
+  id: number | string;
+  nombre: string;
+  valor: number;
+  categorias: string[];
+  disponible: boolean;
+};
+
+export interface City {
    name: string;
    neighborhoods: {
      name: string;
