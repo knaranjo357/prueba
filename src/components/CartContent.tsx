@@ -69,8 +69,7 @@ const CartContent: React.FC<CartContentProps> = ({ onCheckout }) => {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
-                  className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col gap-4"
+                  className="bg-white rounded-[1.5rem] p-4 shadow-sm hover:shadow-md border border-gray-100/80 flex flex-col gap-4 transition-all"
                 >
                   {/* Top Row: Imagen + Info + Delete */}
                   <div className="flex gap-4">
@@ -91,7 +90,7 @@ const CartContent: React.FC<CartContentProps> = ({ onCheckout }) => {
                             {item.nombre}
                           </h4>
                           <button
-                            onClick={() => removeFromCart(item.id)}
+                            onClick={() => removeFromCart(String(item.id))}
                             className="text-gray-400 hover:text-red-500 transition-colors p-1 -mr-2 -mt-2"
                           >
                             <Trash2 size={18} />
@@ -106,15 +105,15 @@ const CartContent: React.FC<CartContentProps> = ({ onCheckout }) => {
 
                   {/* Middle: Notas (Input Style iOS) */}
                   <div className="relative group">
-                    <div className="absolute left-3 top-3 text-gray-400">
-                      <MessageSquare size={14} />
+                    <div className="absolute left-3.5 top-3.5 text-gray-400">
+                      <MessageSquare size={16} />
                     </div>
                     <textarea
                       value={item.notes || ''}
-                      onChange={(e) => updateNotes(item.id, e.target.value)}
-                      placeholder="¿Alguna indicación especial?"
+                      onChange={(e) => updateNotes(String(item.id), e.target.value)}
+                      placeholder="Nota (sin cebolla, etc)"
                       rows={1}
-                      className="w-full bg-gray-50 hover:bg-gray-100 focus:bg-white border border-transparent focus:border-gold/30 rounded-xl py-2.5 pl-9 pr-3 text-sm text-wood-dark placeholder-gray-400 resize-none transition-all outline-none"
+                      className="w-full bg-gray-50/80 hover:bg-gray-100 focus:bg-white border-2 border-transparent focus:border-gold/30 rounded-2xl py-3 pl-10 pr-4 text-base text-wood-dark placeholder-gray-400 resize-none transition-all outline-none font-medium"
                     />
                   </div>
 
@@ -122,21 +121,21 @@ const CartContent: React.FC<CartContentProps> = ({ onCheckout }) => {
                   <div className="flex items-center justify-between pt-2 border-t border-gray-50">
                     
                     {/* Quantity Stepper */}
-                    <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                    <div className="flex items-center bg-gray-50 border border-gray-100 rounded-full p-1 shadow-sm">
                       <motion.button
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        className="w-8 h-8 flex items-center justify-center bg-white rounded-md shadow-sm text-wood-dark hover:text-red-500 transition-colors disabled:opacity-50"
+                        onClick={() => updateQuantity(String(item.id), item.quantity - 1)}
+                        className="w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-sm text-wood-dark hover:text-red-500 transition-colors disabled:opacity-50"
                       >
                         <Minus size={14} />
                       </motion.button>
-                      <span className="w-10 text-center font-bold text-wood-dark text-sm">
+                      <span className="w-10 text-center font-bold text-wood-dark text-base tabular-nums">
                         {item.quantity}
                       </span>
                       <motion.button
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        className="w-8 h-8 flex items-center justify-center bg-white rounded-md shadow-sm text-wood-dark hover:text-gold transition-colors"
+                        onClick={() => updateQuantity(String(item.id), item.quantity + 1)}
+                        className="w-8 h-8 flex items-center justify-center bg-gold text-white rounded-full shadow-sm hover:bg-gold/90 transition-colors"
                       >
                         <Plus size={14} />
                       </motion.button>
@@ -179,7 +178,7 @@ const CartContent: React.FC<CartContentProps> = ({ onCheckout }) => {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={onCheckout}
-          className={`w-full bg-wood-dark hover:bg-black text-white rounded-xl font-bold shadow-lg shadow-wood-dark/20 flex items-center justify-center gap-2 transition-all ${isTyping ? 'py-3 text-sm' : 'py-4 text-base'}`}
+          className={`w-full bg-wood-dark hover:bg-black text-white rounded-2xl font-bold shadow-xl shadow-wood-dark/20 flex items-center justify-center gap-2 transition-all ${isTyping ? 'py-3 text-sm' : 'py-4 text-base'}`}
         >
           <Utensils size={18} />
           Continuar compra

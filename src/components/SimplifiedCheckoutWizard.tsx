@@ -9,7 +9,7 @@ import { restaurantConfig } from '../config/restaurantConfig';
 
 interface SimplifiedCheckoutWizardProps {
   customerInfo: CustomerInfo;
-  setCustomerInfo: (info: CustomerInfo) => void;
+  setCustomerInfo: React.Dispatch<React.SetStateAction<CustomerInfo>>;
   onBack: () => void;
   onSubmit: (deliveryPrice: number) => void;
 }
@@ -42,7 +42,7 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
 
   const cartTotal = calculateTotalPrice(items);
   const deliveryPrice = selectedNeighborhood
-    ? deliveryAreas.find(area => area.barrio === selectedNeighborhood)?.precio || 0
+    ? deliveryAreas.find(area => area.barrio.toLowerCase() === selectedNeighborhood.toLowerCase())?.precio || 0
     : 0;
 
   const totalSteps = customerInfo.deliveryType === 'delivery' ? 4 : 3;
@@ -72,8 +72,13 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
           name: parsed.name || prev.name,
           phone: parsed.phone || prev.phone,
           address: parsed.address || prev.address,
-          paymentMethod: parsed.paymentMethod || prev.paymentMethod
+          paymentMethod: parsed.paymentMethod || prev.paymentMethod,
+          neighborhood: parsed.neighborhood || prev.neighborhood
         }));
+        if (parsed.neighborhood) {
+          setSelectedNeighborhood(parsed.neighborhood);
+          setSearchTerm(parsed.neighborhood);
+        }
       } catch (error) {
         console.error('Error loading saved customer info:', error);
       }
@@ -86,7 +91,8 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
         name: customerInfo.name,
         phone: customerInfo.phone,
         address: customerInfo.address,
-        paymentMethod: customerInfo.paymentMethod
+        paymentMethod: customerInfo.paymentMethod,
+        neighborhood: customerInfo.neighborhood
       }));
     }
   }, [customerInfo]);
@@ -207,36 +213,36 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
                     setCustomerInfo(prev => ({ ...prev, deliveryType: 'delivery' }));
                     setTimeout(nextStep, 200);
                   }}
-                  className={`w-full p-3 md:p-6 rounded-2xl flex items-center gap-3 md:gap-4 transition-all duration-200 border-2 ${
+                  className={`w-full p-4 md:p-6 rounded-2xl flex items-center gap-4 transition-all duration-300 border-2 ${
                     customerInfo.deliveryType === 'delivery'
-                      ? 'bg-gold text-white border-gold shadow-lg'
-                      : 'bg-white border-gold/30 text-wood-dark hover:border-gold/50'
+                      ? 'bg-gradient-to-br from-gold to-gold/90 text-white border-transparent shadow-xl shadow-gold/20'
+                      : 'bg-white border-gray-100 text-wood-dark hover:border-gold/30 hover:shadow-md'
                   }`}
                 >
-                  <Truck className="w-6 h-6 md:w-8 md:h-8" />
+                  <Truck className="w-7 h-7 md:w-8 md:h-8" />
                   <div className="text-left">
-                    <div className="font-bold text-base md:text-lg">Domicilio</div>
-                    <div className="text-xs md:text-sm opacity-80">Entrega en tu dirección</div>
+                    <div className="font-bold text-lg">Domicilio</div>
+                    <div className="text-sm opacity-80">Entrega en tu dirección</div>
                   </div>
                 </motion.button>
 
                 <motion.button
-                  whileHover={{ scale: 1.02 }}
+                  whileHover={{ scale: 1.02, y: -2 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     setCustomerInfo(prev => ({ ...prev, deliveryType: 'pickup' }));
                     setTimeout(nextStep, 200);
                   }}
-                  className={`w-full p-3 md:p-6 rounded-2xl flex items-center gap-3 md:gap-4 transition-all duration-200 border-2 ${
+                  className={`w-full p-4 md:p-6 rounded-2xl flex items-center gap-4 transition-all duration-300 border-2 ${
                     customerInfo.deliveryType === 'pickup'
-                      ? 'bg-gold text-white border-gold shadow-lg'
-                      : 'bg-white border-gold/30 text-wood-dark hover:border-gold/50'
+                      ? 'bg-wood-dark text-white border-transparent shadow-xl shadow-wood-dark/20'
+                      : 'bg-white border-gray-100 text-wood-dark hover:border-gold/30 hover:shadow-md'
                   }`}
                 >
-                  <Store className="w-6 h-6 md:w-8 md:h-8" />
+                  <Store className="w-7 h-7 md:w-8 md:h-8" />
                   <div className="text-left">
-                    <div className="font-bold text-base md:text-lg">Recoger en local</div>
-                    <div className="text-xs md:text-sm opacity-80">Más rápido y sin costo adicional</div>
+                    <div className="font-bold text-lg">Recoger en local</div>
+                    <div className="text-sm opacity-80">Más rápido y sin costo adicional</div>
                   </div>
                 </motion.button>
               </div>
@@ -253,32 +259,34 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
               className="max-w-md mx-auto space-y-3 md:space-y-6"
             >
               {showSectionTitles && (
-                <div className="hidden md:block text-center mb-4 md:mb-8">
-                  <User className="text-gold mx-auto mb-4 w-12 h-12" />
-                  <h3 className="text-2xl font-bold text-wood-dark mb-2">Tus datos</h3>
-                  <p className="text-wood-medium">Para contactarte sobre tu pedido</p>
+                <div className="hidden md:block text-center mb-6 md:mb-8">
+                  <div className="w-16 h-16 bg-gold/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <User className="text-gold w-8 h-8" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-wood-dark mb-1">Tus datos</h3>
+                  <p className="text-wood-medium text-sm">Para contactarte sobre tu pedido</p>
                 </div>
               )}
 
-              <div className="space-y-2.5 md:space-y-4">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                  <label className="block text-wood-dark font-semibold mb-2 text-sm">
                     Nombre completo
                   </label>
                   <input
                     type="text"
                     inputMode="text"
                     value={customerInfo.name}
-                    onChange={(e) => setCustomerInfo(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setCustomerInfo((prev: any) => ({ ...prev, name: e.target.value }))}
                     onFocus={handleFieldFocus}
-                    className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
+                    className="w-full bg-white px-4 py-3 border-2 border-gray-100 rounded-xl focus:ring-4 focus:ring-gold/10 focus:border-gold transition-all text-base scroll-mb-40 shadow-sm outline-none placeholder:text-gray-300 font-medium"
                     placeholder="Tu nombre completo"
                     autoFocus
                   />
                 </div>
 
                 <div>
-                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                  <label className="block text-wood-dark font-semibold mb-2 text-sm">
                     Teléfono
                   </label>
                   <input
@@ -286,9 +294,9 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
                     inputMode="tel"
                     pattern="[0-9]*"
                     value={customerInfo.phone}
-                    onChange={(e) => setCustomerInfo(prev => ({ ...prev, phone: e.target.value }))}
+                    onChange={(e) => setCustomerInfo((prev: any) => ({ ...prev, phone: e.target.value }))}
                     onFocus={handleFieldFocus}
-                    className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
+                    className="w-full bg-white px-4 py-3 border-2 border-gray-100 rounded-xl focus:ring-4 focus:ring-gold/10 focus:border-gold transition-all text-base scroll-mb-40 shadow-sm outline-none placeholder:text-gray-300 font-medium"
                     placeholder="300 123 4567"
                   />
                 </div>
@@ -312,49 +320,58 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
                 </div>
               )}
 
-              <div className="space-y-2.5 md:space-y-4">
+              <div className="space-y-4">
                 {/* Barrio */}
                 <div>
-                  <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                  <label className="block text-wood-dark font-semibold mb-2 text-sm">
                     Barrio de entrega
                   </label>
 
-                  <div className="relative mb-2 md:mb-3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-wood-medium w-5 h-5" />
+                  <div className="relative mb-3">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none" />
                     <input
                       type="text"
                       inputMode="search"
-                      placeholder="Buscar barrio..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Escribe o selecciona tu barrio..."
+                      value={selectedNeighborhood}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedNeighborhood(val);
+                        setSearchTerm(val);
+                        setCustomerInfo((prev: any) => ({ ...prev, neighborhood: val, city: 'Bucaramanga' }));
+                      }}
                       onFocus={handleFieldFocus}
-                      className="w-full pl-10 pr-4 py-2.5 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] scroll-mb-40"
+                      className="w-full bg-white pl-12 pr-4 py-3 border-2 border-gray-100 rounded-xl focus:ring-4 focus:ring-gold/10 focus:border-gold transition-all text-base scroll-mb-40 shadow-sm outline-none placeholder:text-gray-300 font-medium"
                     />
                   </div>
 
                   {loadingAreas && (
-                    <div className="text-center py-3">
-                      <p className="text-wood-medium text-sm">Cargando barrios...</p>
+                    <div className="text-center py-4">
+                      <div className="w-5 h-5 border-2 border-gold border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                      <p className="text-wood-medium text-xs font-semibold uppercase tracking-wider">Cargando...</p>
                     </div>
                   )}
 
                   {!loadingAreas && (
-                    <div className="max-h-40 md:max-h-64 overflow-y-auto space-y-2">
+                    <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                       {filteredNeighborhoods.map(neighborhood => (
                         <motion.button
                           key={neighborhood.barrio}
                           whileHover={{ scale: 1.01 }}
                           whileTap={{ scale: 0.99 }}
-                          onClick={() => handleNeighborhoodSelect(neighborhood.barrio)}
-                          className={`w-full p-3 rounded-xl text-left transition-all border-2 ${
-                            selectedNeighborhood === neighborhood.barrio
-                              ? 'bg-gold text-white border-gold'
-                              : 'bg-white hover:bg-gold/10 text-wood-dark border-transparent hover:border-gold/30'
+                          onClick={() => {
+                            handleNeighborhoodSelect(neighborhood.barrio);
+                            setSearchTerm(neighborhood.barrio);
+                          }}
+                          className={`w-full px-4 py-3 rounded-xl text-left transition-all border ${
+                            selectedNeighborhood.toLowerCase() === neighborhood.barrio.toLowerCase()
+                              ? 'bg-gold text-white border-transparent shadow-lg shadow-gold/20'
+                              : 'bg-white hover:bg-gray-50 text-wood-dark border-gray-100 hover:border-gold/30 shadow-sm'
                           }`}
                         >
                           <div className="flex justify-between items-center">
-                            <span className="font-medium text-sm md:text-base">{neighborhood.barrio}</span>
-                            <span className={`font-bold ${selectedNeighborhood === neighborhood.barrio ? 'text-white' : 'text-gold'}`}>
+                            <span className="font-semibold text-sm md:text-base">{neighborhood.barrio}</span>
+                            <span className={`font-bold ${selectedNeighborhood.toLowerCase() === neighborhood.barrio.toLowerCase() ? 'text-white' : 'text-gold'}`}>
                               {formatPrice(neighborhood.precio)}
                             </span>
                           </div>
@@ -366,21 +383,20 @@ const SimplifiedCheckoutWizard: React.FC<SimplifiedCheckoutWizardProps> = ({
 
                 {/* Dirección */}
                 {selectedNeighborhood && (
-                  <div>
-                    <label className="block text-wood-dark font-medium mb-1.5 text-xs md:text-sm">
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+                    <label className="block text-wood-dark font-semibold mb-2 text-sm mt-2">
                       Dirección completa
                     </label>
                     <input
                       type="text"
                       inputMode="text"
                       value={customerInfo.address}
-                      onChange={(e) => setCustomerInfo(prev => ({ ...prev, address: e.target.value }))}
+                      onChange={(e) => setCustomerInfo((prev: any) => ({ ...prev, address: e.target.value }))}
                       onFocus={handleFieldFocus}
-                      className="w-full px-4 py-2.5 md:p-4 border-2 border-wood-light/30 rounded-xl focus:ring-2 focus:ring-gold/50 focus:border-gold/50 transition-all text-[16px] md:text-lg scroll-mb-40"
+                      className="w-full bg-white px-4 py-3 border-2 border-gray-100 rounded-xl focus:ring-4 focus:ring-gold/10 focus:border-gold transition-all text-base scroll-mb-40 shadow-sm outline-none placeholder:text-gray-300 font-medium"
                       placeholder="Calle 123 #45-67, Apto 101"
-                      autoFocus
                     />
-                  </div>
+                  </motion.div>
                 )}
               </div>
             </motion.div>

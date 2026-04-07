@@ -58,14 +58,17 @@ const Cart: React.FC = () => {
           .map(item => {
             const itemPrice =
               item.valor + (item.isForTakeaway && item.precio_adicional_llevar ? item.precio_adicional_llevar : 0);
-            return `- ${item.quantity}x ${item.nombre} (${formatPrice(itemPrice)})`;
+            const lineTotal = itemPrice * item.quantity;
+            const note = item.notes ? item.notes.trim() : "";
+            const nameWithNote = note ? `${item.nombre} (${note})` : item.nombre;
+            return `- ${item.quantity},${nameWithNote} ,${lineTotal};`;
           })
           .join('\n');
 
       const orderData = {
         fecha: new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' }),
         nombre: customerInfo.name,
-        numero: `57${customerInfo.phone.replace(/\D/g, '')}@s.whatsapp.net`,
+        numero: customerInfo.phone.replace(/\s+/g, ''),
         direccion: customerInfo.deliveryType === 'delivery' ? customerInfo.address : 'Recoger en local',
         'detalle pedido': detalleItems,
         valor_restaurante: calculateTotalPrice(items),
@@ -103,7 +106,7 @@ const Cart: React.FC = () => {
       x: 0, 
       y: 0,
       opacity: 1,
-      transition: { type: "spring", damping: 25, stiffness: 200 }
+      transition: { type: "spring" as const, damping: 25, stiffness: 200 }
     },
     exit: { 
       x: isMobile ? 0 : '100%', 

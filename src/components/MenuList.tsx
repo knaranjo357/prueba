@@ -57,8 +57,8 @@ const MenuList: React.FC = () => {
     });
   }, [sortedItems, selectedCategory, searchTerm]);
 
-  const getItemQuantityInCart = (itemId: string) => {
-    const cartItem = cartItems.find(item => item.id === itemId);
+  const getItemQuantityInCart = (itemId: string | number) => {
+    const cartItem = cartItems.find(item => String(item.id) === String(itemId));
     return cartItem ? cartItem.quantity : 0;
   };
 
@@ -66,11 +66,11 @@ const MenuList: React.FC = () => {
     e.stopPropagation(); // Evitar abrir modal al hacer click en botones
     const currentQuantity = getItemQuantityInCart(item.id);
     if (newQuantity <= 0) {
-      if (currentQuantity > 0) updateQuantity(item.id, 0);
+        if (currentQuantity > 0) updateQuantity(String(item.id), 0);
     } else if (currentQuantity === 0) {
       addToCart(item, newQuantity);
     } else {
-      updateQuantity(item.id, newQuantity);
+      updateQuantity(String(item.id), newQuantity);
     }
   };
 
@@ -143,17 +143,17 @@ const MenuList: React.FC = () => {
         </div>
 
         {/* --- CATEGORÍAS (Horizontal Scroll en móvil, Sticky) --- */}
-        <div className="mt-3 max-w-7xl mx-auto px-4">
-          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mask-linear-fade">
+        <div className="mt-4 max-w-7xl mx-auto px-4">
+          <div className="flex gap-2.5 overflow-x-auto pb-3 custom-scrollbar scroll-smooth">
             {allCategories.map((cat) => (
               <motion.button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
                 whileTap={{ scale: 0.95 }}
-                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all whitespace-nowrap border ${
+                className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-sm font-bold transition-all border ${
                   selectedCategory === cat
-                    ? 'bg-gold text-white border-gold shadow-gold/30 shadow-lg'
-                    : 'bg-white text-wood-medium border-gray-200 hover:border-gold/50 hover:text-gold'
+                    ? 'bg-wood-dark text-white border-wood-dark shadow-xl shadow-wood-dark/20'
+                    : 'bg-white/80 backdrop-blur-sm text-wood-medium border-gray-100 hover:border-gold/40 hover:bg-white hover:text-wood-dark shadow-sm'
                 }`}
               >
                 {cat}
@@ -184,79 +184,98 @@ const MenuList: React.FC = () => {
                 return (
                   <motion.div
                     layout
-                    initial={{ opacity: 0, scale: 0.9 }}
+                    initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
                     key={item.id}
-                    onClick={() => setIsModalOpen(true) || setSelectedItem(item)}
-                    className={`group relative bg-white rounded-2xl p-4 shadow-sm hover:shadow-xl border border-gray-100 hover:border-gold/30 transition-all duration-300 cursor-pointer flex flex-col h-full ${
+                    onClick={() => {
+                      setSelectedItem(item);
+                      setIsModalOpen(true);
+                    }}
+                    className={`group relative bg-white rounded-[1.5rem] p-4 shadow-sm hover:shadow-xl border border-gray-100/80 hover:border-gold/30 transition-all duration-300 cursor-pointer flex flex-col h-full ${
                       !item.disponible ? 'opacity-75 grayscale-[0.5]' : ''
                     }`}
                   >
-                    {/* Etiquetas / Categorías */}
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {item.categorias?.slice(0, 2).map((cat) => (
-                        <span key={cat} className="text-[10px] uppercase tracking-wider font-bold text-gold bg-gold/5 px-2 py-0.5 rounded-md">
-                          {cat}
-                        </span>
-                      ))}
-                    </div>
+                    {/* Top Row: Thumbnail & Info */}
+                    <div className="flex gap-4">
+                      {/* Thumbnail */}
+                      <div className="w-[84px] h-[84px] shrink-0 bg-gray-50 rounded-2xl overflow-hidden shadow-sm relative">
+                        <img 
+                          src={(item as any).url_imagen || 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&dpr=1'} 
+                          alt={item.nombre} 
+                          className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                        />
+                        {!item.disponible && (
+                          <div className="absolute inset-0 bg-white/50 backdrop-blur-[2px] flex items-center justify-center">
+                            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-md rotate-[-12deg] shadow-sm">AGOTADO</span>
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Info Principal */}
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start gap-2">
-                        <h3 className="text-lg font-bold text-wood-dark leading-tight mb-1 group-hover:text-gold transition-colors">
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Etiquetas / Categorías */}
+                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                          {item.categorias?.slice(0, 2).map((cat) => (
+                            <span key={cat} className="text-[10px] uppercase tracking-widest font-black text-gold">
+                              {cat}
+                            </span>
+                          ))}
+                        </div>
+
+                        <h3 className="text-base font-bold text-wood-dark leading-tight mb-1 group-hover:text-gold transition-colors line-clamp-2">
                           {item.nombre}
                         </h3>
+                        
+                        {item.descripcion && (
+                          <p className="text-wood-medium text-xs leading-relaxed line-clamp-2">
+                            {item.descripcion}
+                          </p>
+                        )}
                       </div>
-                      
-                      {item.descripcion && (
-                        <p className="text-wood-medium text-sm leading-relaxed line-clamp-2 mb-4">
-                          {item.descripcion}
-                        </p>
-                      )}
                     </div>
 
+                    {/* Spacer to push footer to bottom */}
+                    <div className="flex-1" />
+
                     {/* Footer: Precio y Acción */}
-                    <div className="mt-auto pt-3 border-t border-gray-50 flex items-center justify-between">
+                    <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between">
                       <div className="flex flex-col">
-                        <span className="text-xs text-wood-medium">Precio</span>
-                        <span className="text-lg font-bold text-wood-dark">
+                        <span className="text-xl font-black text-wood-dark">
                           {formatPrice(item.valor)}
                         </span>
                       </div>
 
                       <div onClick={(e) => e.stopPropagation()}>
                         {!item.disponible ? (
-                          <span className="px-3 py-1.5 bg-gray-100 text-gray-500 text-xs font-bold rounded-lg border border-gray-200">
-                            Agotado
-                          </span>
+                          <div className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full cursor-not-allowed">
+                            <Minus size={18} className="text-gray-400" />
+                          </div>
                         ) : quantity === 0 ? (
                           <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={(e) => handleQuantityChange(e, item, 1)}
-                            className="bg-wood-light/10 hover:bg-gold hover:text-white text-wood-dark px-4 py-2 rounded-xl font-semibold text-sm transition-all flex items-center gap-2"
+                            className="w-10 h-10 flex items-center justify-center bg-wood-dark hover:bg-black text-white rounded-full shadow-lg shadow-wood-dark/20 transition-all font-bold group-hover:bg-gold group-hover:shadow-gold/30"
                           >
-                            <Plus size={16} />
-                            Agregar
+                            <Plus size={18} />
                           </motion.button>
                         ) : (
-                          <div className="flex items-center bg-white rounded-xl shadow-md border border-gold/20 p-1">
+                          <div className="flex items-center bg-gray-50 border border-gray-100 rounded-full p-1 shadow-sm">
                             <motion.button
                               whileTap={{ scale: 0.8 }}
                               onClick={(e) => handleQuantityChange(e, item, quantity - 1)}
-                              className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-red-50 text-wood-dark hover:text-red-500 rounded-lg transition-colors"
+                              className="w-8 h-8 flex items-center justify-center bg-white hover:bg-gray-100 text-wood-dark hover:text-red-500 rounded-full transition-colors shadow-sm"
                             >
-                              <Minus size={16} />
+                              <Minus size={14} />
                             </motion.button>
-                            <span className="w-8 text-center font-bold text-wood-dark">{quantity}</span>
+                            <span className="w-8 text-center font-bold text-wood-dark tabular-nums">{quantity}</span>
                             <motion.button
                               whileTap={{ scale: 0.8 }}
                               onClick={(e) => handleQuantityChange(e, item, quantity + 1)}
-                              className="w-8 h-8 flex items-center justify-center bg-gold text-white rounded-lg shadow-sm"
+                              className="w-8 h-8 flex items-center justify-center bg-gold text-white rounded-full shadow-sm hover:bg-gold/90 transition-colors"
                             >
-                              <Plus size={16} />
+                              <Plus size={14} />
                             </motion.button>
                           </div>
                         )}

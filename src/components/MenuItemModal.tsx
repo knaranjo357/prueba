@@ -62,8 +62,7 @@ const MenuItemModal: React.FC<MenuItemModalProps> = ({ item, isOpen, onClose }) 
               leaveFrom="translate-y-0 opacity-100 sm:scale-100"
               leaveTo="translate-y-full opacity-0 sm:translate-y-0 sm:scale-95"
             >
-              <Dialog.Panel className="relative w-full max-w-lg transform overflow-hidden rounded-t-3xl sm:rounded-2xl bg-white text-left shadow-2xl transition-all flex flex-col max-h-[90vh]">
-                
+              <Dialog.Panel className="relative w-full max-w-lg transform overflow-hidden rounded-t-[2rem] sm:rounded-3xl bg-white text-left shadow-2xl transition-all flex flex-col max-h-[92vh]">
                 {/* --- HEADER: IMAGEN --- */}
                 <div className="relative h-56 sm:h-64 shrink-0">
                   {/* Botón cerrar flotante */}
@@ -125,8 +124,8 @@ const MenuItemModal: React.FC<MenuItemModalProps> = ({ item, isOpen, onClose }) 
                   </div>
 
                   {/* Sección de Notas */}
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-2 text-sm font-semibold text-wood-dark">
+                  <div className="space-y-3 mt-4">
+                    <label className="flex items-center gap-2 text-sm font-bold text-wood-dark">
                       <MessageSquare size={16} className="text-gold" />
                       Instrucciones especiales
                     </label>
@@ -134,8 +133,8 @@ const MenuItemModal: React.FC<MenuItemModalProps> = ({ item, isOpen, onClose }) 
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       placeholder="Ej: Sin cebolla, salsa aparte..."
-                      rows={3}
-                      className="w-full p-4 rounded-xl bg-gray-50 border-2 border-transparent focus:bg-white focus:border-gold/30 focus:ring-0 transition-all text-sm resize-none placeholder-gray-400"
+                      rows={2}
+                      className="w-full p-4 rounded-2xl bg-gray-50/80 hover:bg-gray-100 border-2 border-transparent focus:bg-white focus:border-gold/30 focus:ring-0 transition-all text-base resize-none placeholder-gray-400 font-medium outline-none"
                     />
                   </div>
                 </div>
@@ -146,12 +145,12 @@ const MenuItemModal: React.FC<MenuItemModalProps> = ({ item, isOpen, onClose }) 
                   <div className="flex items-center gap-4">
                     
                     {/* Selector Cantidad Compacto */}
-                    <div className="flex items-center bg-gray-100 rounded-xl p-1.5 shrink-0">
+                    <div className="flex items-center bg-gray-50 border border-gray-100 rounded-full p-1.5 shrink-0 shadow-sm">
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setQuantity(Math.max(1, quantity - 1))}
                         disabled={!item.disponible || quantity <= 1}
-                        className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
+                        className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
                           quantity <= 1 ? 'text-gray-300' : 'bg-white text-wood-dark shadow-sm hover:text-red-500'
                         }`}
                       >
@@ -166,7 +165,7 @@ const MenuItemModal: React.FC<MenuItemModalProps> = ({ item, isOpen, onClose }) 
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setQuantity(quantity + 1)}
                         disabled={!item.disponible}
-                        className="w-10 h-10 flex items-center justify-center rounded-lg bg-white text-wood-dark shadow-sm hover:text-gold transition-colors"
+                        className="w-10 h-10 flex items-center justify-center rounded-full bg-gold text-white shadow-sm hover:bg-gold/90 transition-colors"
                       >
                         <Plus size={18} />
                       </motion.button>
@@ -178,9 +177,9 @@ const MenuItemModal: React.FC<MenuItemModalProps> = ({ item, isOpen, onClose }) 
                       whileTap={item.disponible ? { scale: 0.98 } : {}}
                       onClick={handleAddToCart}
                       disabled={!item.disponible}
-                      className={`flex-1 flex items-center justify-between px-6 py-4 rounded-xl font-bold text-white shadow-lg transition-all ${
+                      className={`flex-1 flex items-center justify-between px-6 py-4 rounded-2xl font-bold text-white shadow-xl transition-all ${
                         item.disponible
-                          ? 'bg-gradient-to-r from-gold to-gold/90 hover:shadow-gold/30'
+                          ? 'bg-wood-dark hover:bg-black shadow-wood-dark/20'
                           : 'bg-gray-300 cursor-not-allowed'
                       }`}
                     >
