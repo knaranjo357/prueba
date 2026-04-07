@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   Printer,
   Save,
@@ -12,8 +12,8 @@ import {
   Minus,
   Plus,
   Search,
-  ArrowUpDown,
   MessageSquare,
+  ChevronDown,
 } from 'lucide-react';
 
 /** TIPOS */
@@ -53,13 +53,10 @@ const cleanPhone = (raw: unknown) => {
     raw && typeof raw === 'object'
       ? (raw as any).numero ?? (raw as any).value ?? (raw as any).phone ?? ''
       : raw;
-
   const s = String(v ?? '');
-  // Limpiar sufijo @s.whatsapp.net y caracteres no numéricos
   return s.replace(/@s\.whatsapp\.net$/i, '').replace(/[^0-9+]/g, '');
 };
 
-// Retorna el número raw legible (sin limpiar) para mostrar en edición
 const getRawPhone = (raw: unknown): string => {
   const v =
     raw && typeof raw === 'object'
@@ -72,7 +69,7 @@ const paymentMethods = [
   'transferencia',
   'transferencia_espera',
   'efectivo',
-  'transferencia_confirmada'
+  'transferencia_confirmada',
 ] as const;
 
 const allowedStatuses = [
@@ -82,138 +79,110 @@ const allowedStatuses = [
   'preparando',
   'en camino',
   'entregado',
-  'con problema'
+  'con problema',
 ] as const;
 
 const getStatusUI = (estado?: string) => {
   const s = (estado || '').toLowerCase().trim();
-
-  if (s === 'pidiendo') {
-    return {
-      card: 'bg-yellow-50 border-yellow-200 shadow-yellow-50',
-      badge: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
-      dot: 'bg-yellow-400'
-    };
-  }
-
-  if (s === 'confirmado') {
-    return {
-      card: 'bg-orange-50 border-orange-200 shadow-orange-50',
-      badge: 'bg-orange-100 text-orange-800 border border-orange-200',
-      dot: 'bg-orange-500'
-    };
-  }
-
-  if (s === 'impreso') {
-    return {
-      card: 'bg-sky-50 border-sky-200 shadow-sky-50',
-      badge: 'bg-sky-100 text-sky-800 border border-sky-200',
-      dot: 'bg-sky-500'
-    };
-  }
-
-  if (s === 'preparando') {
-    return {
-      card: 'bg-violet-50 border-violet-200 shadow-violet-50',
-      badge: 'bg-violet-100 text-violet-800 border border-violet-200',
-      dot: 'bg-violet-500'
-    };
-  }
-
-  if (s === 'en camino') {
-    return {
-      card: 'bg-cyan-50 border-cyan-200 shadow-cyan-50',
-      badge: 'bg-cyan-100 text-cyan-800 border border-cyan-200',
-      dot: 'bg-cyan-500'
-    };
-  }
-
-  if (s === 'entregado') {
-    return {
-      card: 'bg-emerald-50 border-emerald-200 shadow-emerald-50',
-      badge: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
-      dot: 'bg-emerald-500'
-    };
-  }
-
-  if (s === 'con problema') {
-    return {
-      card: 'bg-rose-50 border-rose-300 shadow-rose-50',
-      badge: 'bg-rose-100 text-rose-800 border border-rose-300',
-      dot: 'bg-rose-500'
-    };
-  }
-
-  return {
-    card: 'bg-white border-gray-200 shadow-gray-50',
-    badge: 'bg-gray-100 text-gray-700 border border-gray-200',
-    dot: 'bg-gray-400'
-  };
+  if (s === 'pidiendo')    return { card: 'bg-yellow-50 border-yellow-200',  badge: 'bg-yellow-100 text-yellow-800 border border-yellow-200',  dot: 'bg-yellow-400' };
+  if (s === 'confirmado')  return { card: 'bg-orange-50 border-orange-200',  badge: 'bg-orange-100 text-orange-800 border border-orange-200',  dot: 'bg-orange-500' };
+  if (s === 'impreso')     return { card: 'bg-sky-50 border-sky-200',        badge: 'bg-sky-100 text-sky-800 border border-sky-200',           dot: 'bg-sky-500'    };
+  if (s === 'preparando')  return { card: 'bg-violet-50 border-violet-200',  badge: 'bg-violet-100 text-violet-800 border border-violet-200',  dot: 'bg-violet-500' };
+  if (s === 'en camino')   return { card: 'bg-cyan-50 border-cyan-200',      badge: 'bg-cyan-100 text-cyan-800 border border-cyan-200',        dot: 'bg-cyan-500'   };
+  if (s === 'entregado')   return { card: 'bg-emerald-50 border-emerald-200',badge: 'bg-emerald-100 text-emerald-800 border border-emerald-200',dot: 'bg-emerald-500'};
+  if (s === 'con problema')return { card: 'bg-rose-50 border-rose-300',      badge: 'bg-rose-100 text-rose-800 border border-rose-300',        dot: 'bg-rose-500'   };
+  return { card: 'bg-white border-gray-200', badge: 'bg-gray-100 text-gray-700 border border-gray-200', dot: 'bg-gray-400' };
 };
 
-// === LOGICA DE PARSEO ROBUSTA ===
+// === LOGICA DE PARSEO ===
 const splitOutsideParens = (s: string, separators = [';']): string[] => {
   const sepSet = new Set(separators);
   const out: string[] = [];
   let buf = '';
   let depth = 0;
-
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
     if (ch === '(') depth++;
     else if (ch === ')') depth = Math.max(0, depth - 1);
-
-    if (depth === 0 && sepSet.has(ch)) {
-      if (buf.trim()) out.push(buf.trim());
-      buf = '';
-    } else {
-      buf += ch;
-    }
+    if (depth === 0 && sepSet.has(ch)) { if (buf.trim()) out.push(buf.trim()); buf = ''; }
+    else { buf += ch; }
   }
-
   if (buf.trim()) out.push(buf.trim());
   return out;
 };
 
-const splitByCommaOutsideParens = (s: string): string[] =>
-  splitOutsideParens(s, [',']);
+const splitByCommaOutsideParens = (s: string): string[] => splitOutsideParens(s, [',']);
 
 const parseDetailsForView = (raw: string) => {
   if (!raw) return [];
-
-  const itemStrings = splitOutsideParens(raw, [';', '|'])
-    .map(x => x.trim())
-    .filter(Boolean);
-
+  const itemStrings = splitOutsideParens(raw, [';', '|']).map(x => x.trim()).filter(Boolean);
   return itemStrings.map(itemStr => {
     const parts = splitByCommaOutsideParens(itemStr).map(x => x.trim());
-
-    let quantity = 1;
-    let name = '';
-    let priceTotal = 0;
-
+    let quantity = 1, name = '', priceTotal = 0;
     if (parts.length >= 3) {
       quantity = parseInt(parts[0].replace(/^-/, ''), 10) || 1;
       name = parts.slice(1, parts.length - 1).join(', ').trim();
       priceTotal = parseInt(parts[parts.length - 1], 10) || 0;
     } else if (parts.length === 2) {
-      quantity = 1;
-      name = parts[0];
-      priceTotal = parseInt(parts[1], 10) || 0;
+      quantity = 1; name = parts[0]; priceTotal = parseInt(parts[1], 10) || 0;
     } else {
       name = parts[0] || 'Item';
     }
-
     const priceUnit = quantity > 0 ? Math.round(priceTotal / quantity) : 0;
     return { quantity, name, priceTotal, priceUnit };
   });
 };
 
+// ─── Botón táctil sin delay y con feedback inmediato ───────────────────────
+interface TapButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  children: React.ReactNode;
+  className?: string;
+  onTap?: () => void;
+}
+
+const TapButton: React.FC<TapButtonProps> = ({ children, className = '', onTap, onClick, ...rest }) => {
+  const fired = useRef(false);
+  const timer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    fired.current = false;
+  }, []);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();          // cancela el click sintético del browser (300ms tap delay)
+    if (!fired.current) {
+      fired.current = true;
+      onTap?.();
+      onClick?.(e as any);
+    }
+    if (timer.current) clearTimeout(timer.current);
+  }, [onTap, onClick]);
+
+  const handlePointerCancel = useCallback(() => {
+    fired.current = true;        // cancelado, no disparar
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  return (
+    <button
+      {...rest}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      // Mantener onClick como fallback en desktop
+      onClick={e => { if (!fired.current) { onClick?.(e); onTap?.(); } fired.current = false; }}
+      style={{ touchAction: 'manipulation', userSelect: 'none', WebkitTapHighlightColor: 'transparent', ...rest.style }}
+      className={className}
+    >
+      {children}
+    </button>
+  );
+};
+
 interface TarjetaPedidoProps {
   order: Order;
   isEditing: boolean;
-
-  // Edit State
   editNombre: string;
   setEditNombre: (v: string) => void;
   editDireccion: string;
@@ -225,8 +194,6 @@ interface TarjetaPedidoProps {
   setEditMetodoPago: (v: string) => void;
   cartItems: CartItem[];
   setCartItems: React.Dispatch<React.SetStateAction<CartItem[]>>;
-
-  // Menu / Actions
   menuSearch: string;
   setMenuSearch: (v: string) => void;
   menuCat: string;
@@ -235,91 +202,77 @@ interface TarjetaPedidoProps {
   categories: string[];
   addItemToCart: (item: MenuItem) => void;
   decreaseItem: (idx: number) => void;
-
-  // Handlers
   onCancelEdit: () => void;
   onSaveEdit: (o: Order) => void;
   onStartEdit: (o: Order) => void;
   onPrint: (o: Order) => void;
   onStatusChange: (o: Order, status: string) => void;
-  onPaymentMethodChange: (o: Order, method: string) => void;
+  onPaymentMethodChange?: (o: Order, method: string) => void;
 }
 
 const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
-  order,
-  isEditing,
-  editNombre,
-  setEditNombre,
-  editDireccion,
-  setEditDireccion,
-  editValorRest,
-  editValorDom,
-  setEditValorDom,
-  editMetodoPago,
-  setEditMetodoPago,
-  cartItems,
-  setCartItems,
-  menuSearch,
-  setMenuSearch,
-  menuCat,
-  setMenuCat,
-  filteredMenu,
-  categories,
-  addItemToCart,
-  decreaseItem,
-  onCancelEdit,
-  onSaveEdit,
-  onStartEdit,
-  onPrint,
-  onStatusChange,
-  onPaymentMethodChange
+  order, isEditing,
+  editNombre, setEditNombre,
+  editDireccion, setEditDireccion,
+  editValorRest, editValorDom, setEditValorDom,
+  editMetodoPago, setEditMetodoPago,
+  cartItems, setCartItems,
+  menuSearch, setMenuSearch,
+  menuCat, setMenuCat,
+  filteredMenu, categories,
+  addItemToCart, decreaseItem,
+  onCancelEdit, onSaveEdit, onStartEdit,
+  onPrint, onStatusChange, onPaymentMethodChange,
 }) => {
-  const phone = cleanPhone(order?.numero ?? '');
+  const phone    = cleanPhone(order?.numero ?? '');
   const rawPhone = getRawPhone(order?.numero ?? '');
-  const ui = getStatusUI(order.estado);
-  const total = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
+  const ui       = getStatusUI(order.estado);
+  const total    = (order.valor_restaurante || 0) + (order.valor_domicilio || 0);
 
-  // === MODO EDICIÓN ===
+  // ════════════════════════════════════════════
+  // MODO EDICIÓN
+  // ════════════════════════════════════════════
   if (isEditing) {
     return (
       <div className="md:col-span-2 xl:col-span-3 bg-white border-2 border-amber-400 rounded-2xl shadow-2xl relative overflow-hidden ring-4 ring-amber-400/10 z-30">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 to-orange-400" />
 
-        {/* Header del editor */}
+        {/* ── Header ── */}
         <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100 bg-white sticky top-0 z-20">
-          <h3 className="font-black text-gray-900 flex items-center gap-2.5">
+          <h3 className="font-black text-gray-900 flex items-center gap-2.5 text-[15px]">
             <span className="w-7 h-7 rounded-full bg-amber-400 text-white flex items-center justify-center text-xs font-black">
               #{order.row_number}
             </span>
             Editando pedido
           </h3>
-          <button
-            onClick={onCancelEdit}
-            className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors"
+          <TapButton
+            onTap={onCancelEdit}
+            className="text-gray-400 hover:text-red-500 p-2.5 hover:bg-red-50 rounded-full transition-colors"
           >
             <X size={20} />
-          </button>
+          </TapButton>
         </div>
 
         <div className="flex flex-col lg:grid lg:grid-cols-12 lg:gap-0">
-          {/* ─ Col. Izquierda: datos del cliente ─ */}
+          {/* ── Col Izquierda: datos ── */}
           <div className="order-1 lg:col-span-4 p-4 space-y-3.5 border-b lg:border-b-0 lg:border-r border-gray-100 bg-white">
 
             {/* Nombre */}
             <div>
-              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Cliente</label>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Cliente / Mesero</label>
               <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-amber-400/30 focus-within:border-amber-400 transition-all">
                 <User size={16} className="text-gray-400 shrink-0" />
                 <input
                   value={editNombre}
                   onChange={e => setEditNombre(e.target.value)}
-                  className="bg-transparent w-full outline-none text-sm font-medium text-gray-800"
+                  className="bg-transparent w-full outline-none text-base font-medium text-gray-800"
                   placeholder="Nombre del cliente"
+                  style={{ fontSize: '16px' }}
                 />
               </div>
             </div>
 
-            {/* Teléfono — completo y clicable */}
+            {/* Teléfono */}
             {rawPhone && (
               <div className="bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-200">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Teléfono / WhatsApp</p>
@@ -340,9 +293,9 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
               </div>
             )}
 
-            {/* Dirección / Notas del pedido */}
+            {/* Dirección */}
             <div>
-              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Dirección / Notas</label>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Dirección / Mesa / Notas</label>
               <div className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-amber-400/30 focus-within:border-amber-400 transition-all">
                 <MapPin size={16} className="text-gray-400 mt-0.5 shrink-0" />
                 <textarea
@@ -350,7 +303,8 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
                   onChange={e => setEditDireccion(e.target.value)}
                   className="bg-transparent w-full outline-none text-sm text-gray-700 resize-none"
                   rows={3}
-                  placeholder="Dirección de entrega y notas del pedido..."
+                  placeholder="Dirección o mesa..."
+                  style={{ fontSize: '16px' }}
                 />
               </div>
             </div>
@@ -364,15 +318,13 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
                     value={editMetodoPago}
                     onChange={e => setEditMetodoPago(e.target.value)}
                     className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 pr-9 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all"
+                    style={{ fontSize: '16px' }}
                   >
-                    {paymentMethods.map(method => (
-                      <option key={method} value={method}>{method}</option>
-                    ))}
+                    {paymentMethods.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
-                  <ArrowUpDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
               </div>
-
               <div>
                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Domicilio ($)</label>
                 <input
@@ -380,11 +332,12 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
                   value={editValorDom}
                   onChange={e => setEditValorDom(parseInt(e.target.value || '0', 10))}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none font-semibold text-right focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all"
+                  style={{ fontSize: '16px' }}
                 />
               </div>
             </div>
 
-            {/* Resumen de totales */}
+            {/* Totales */}
             <div className="bg-amber-50 rounded-xl p-3.5 border border-amber-100">
               <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
                 <span>Restaurante</span>
@@ -401,8 +354,10 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
             </div>
           </div>
 
-          {/* ─ Col. Derecha: productos ─ */}
+          {/* ── Col Derecha: carrito + menú ── */}
           <div className="order-2 lg:col-span-8 flex flex-col bg-gray-50/30">
+
+            {/* Header carrito */}
             <div className="p-3 bg-white border-b border-gray-100 flex items-center justify-between">
               <span className="font-black text-gray-800 text-sm flex items-center gap-2">
                 <ShoppingBasket size={16} className="text-amber-500" />
@@ -413,7 +368,7 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
               </span>
             </div>
 
-            {/* Lista del carrito con nota por ítem */}
+            {/* ── LISTA CARRITO ── */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-[320px] lg:max-h-[260px] min-h-[100px]">
               {cartItems.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-28 text-gray-400 opacity-60">
@@ -423,58 +378,69 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
               )}
 
               {cartItems.map((item, idx) => (
-                <div key={idx} className="bg-white rounded-xl border border-gray-200 hover:border-amber-200 transition-colors overflow-hidden">
-                  {/* Fila principal: cantidad + nombre + precio + eliminar */}
-                  <div className="flex items-center gap-2 p-2.5">
-                    {/* Controles de cantidad */}
-                    <div className="flex items-center border border-gray-200 rounded-lg bg-gray-50 h-8 shrink-0">
-                      <button
-                        onClick={() => decreaseItem(idx)}
-                        className="w-8 h-full flex items-center justify-center hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-l-lg transition-colors"
+                <div key={idx} className="bg-white rounded-xl border border-gray-200 overflow-hidden transition-shadow hover:shadow-sm">
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+
+                    {/* ── Controles cantidad: targets grandes, sin delay ── */}
+                    <div className="flex items-center rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shrink-0" style={{ height: 44 }}>
+                      <TapButton
+                        onTap={() => decreaseItem(idx)}
+                        className="flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-50 active:bg-red-100 transition-colors"
+                        style={{ width: 44, height: 44 }}
+                        aria-label="Quitar uno"
                       >
-                        <Minus size={13} />
-                      </button>
-                      <span className="w-7 text-center font-black text-sm bg-white h-full flex items-center justify-center border-x border-gray-200">
+                        <Minus size={15} />
+                      </TapButton>
+                      <span
+                        className="flex items-center justify-center font-black text-[15px] text-gray-800 bg-white border-x border-gray-200"
+                        style={{ width: 36, height: 44 }}
+                      >
                         {item.quantity}
                       </span>
-                      <button
-                        onClick={() => addItemToCart({ nombre: item.name, valor: item.priceUnit } as any)}
-                        className="w-8 h-full flex items-center justify-center hover:bg-green-50 text-gray-500 hover:text-green-500 rounded-r-lg transition-colors"
+                      <TapButton
+                        onTap={() => addItemToCart({ nombre: item.name, valor: item.priceUnit } as any)}
+                        className="flex items-center justify-center text-gray-500 hover:text-green-600 hover:bg-green-50 active:bg-green-100 transition-colors"
+                        style={{ width: 44, height: 44 }}
+                        aria-label="Agregar uno"
                       >
-                        <Plus size={13} />
-                      </button>
+                        <Plus size={15} />
+                      </TapButton>
                     </div>
 
-                    {/* Nombre */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-800 truncate leading-tight">{item.name}</p>
-                      <p className="text-xs text-gray-400">{money(item.priceUnit)} c/u</p>
+                    {/* Nombre + precio unit */}
+                    <div className="flex-1 min-w-0 px-1">
+                      <p className="text-[13px] font-bold text-gray-800 truncate leading-tight">{item.name}</p>
+                      <p className="text-[11px] text-gray-400 font-medium mt-0.5">{money(item.priceUnit)} c/u</p>
                     </div>
 
                     {/* Total ítem */}
-                    <p className="text-sm font-black text-gray-900 shrink-0">{money(item.quantity * item.priceUnit)}</p>
+                    <p className="text-sm font-black text-gray-900 shrink-0 tabular-nums">{money(item.quantity * item.priceUnit)}</p>
 
                     {/* Eliminar */}
-                    <button
-                      onClick={() => setCartItems(prev => prev.filter((_, i) => i !== idx))}
-                      className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
+                    <TapButton
+                      onTap={() => setCartItems(prev => prev.filter((_, i) => i !== idx))}
+                      className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 active:bg-red-100 rounded-xl transition-all shrink-0 ml-1"
+                      aria-label="Eliminar ítem"
                     >
-                      <X size={14} />
-                    </button>
+                      <X size={15} />
+                    </TapButton>
                   </div>
 
-                  {/* Fila de nota — siempre visible */}
-                  <div className="px-2.5 pb-2.5">
+                  {/* Nota del ítem */}
+                  <div className="px-3 pb-2.5">
                     <div className="flex items-center gap-1.5 bg-amber-50/60 border border-amber-100 rounded-lg px-2.5 py-1.5 focus-within:border-amber-300 focus-within:bg-amber-50 transition-all">
                       <MessageSquare size={11} className="text-amber-400 shrink-0" />
                       <input
                         type="text"
                         value={item.notes || ''}
-                        onChange={e => setCartItems(prev =>
-                          prev.map((x, i) => i === idx ? { ...x, notes: e.target.value } : x)
-                        )}
-                        placeholder="Nota para este ítem (ej: sin cebolla)"
+                        onChange={e =>
+                          setCartItems(prev =>
+                            prev.map((x, i) => i === idx ? { ...x, notes: e.target.value } : x)
+                          )
+                        }
+                        placeholder="Nota (ej: sin cebolla)"
                         className="w-full bg-transparent outline-none text-xs text-gray-600 placeholder:text-amber-400/70 font-medium"
+                        style={{ fontSize: '16px' }}
                       />
                     </div>
                   </div>
@@ -482,72 +448,80 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
               ))}
             </div>
 
-            {/* Buscar y agregar productos */}
+            {/* ── BUSCADOR + MENÚ ── */}
             <div className="border-t border-gray-200 bg-white p-3">
-              <div className="relative mb-2.5 group">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-amber-500 transition-colors" />
+
+              {/* Buscador */}
+              <div className="relative mb-2.5">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
                   id={`search-menu-pedido-${order.row_number}`}
                   value={menuSearch}
                   onChange={e => setMenuSearch(e.target.value)}
                   placeholder="Buscar producto..."
-                  className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none bg-gray-50 focus:bg-white transition-all"
+                  className="w-full pl-9 pr-9 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none bg-gray-50 focus:bg-white transition-all"
+                  style={{ fontSize: '16px' }}
+                  autoComplete="off"
                 />
                 {menuSearch && (
-                  <button
-                    type="button"
-                    onClick={() => {
+                  <TapButton
+                    onTap={() => {
                       setMenuSearch('');
-                      setTimeout(() => document.getElementById(`search-menu-pedido-${order.row_number}`)?.focus(), 0);
+                      document.getElementById(`search-menu-pedido-${order.row_number}`)?.focus();
                     }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 active:text-gray-800 p-1.5 rounded-lg"
+                    aria-label="Limpiar búsqueda"
                   >
                     <X size={14} />
-                  </button>
+                  </TapButton>
                 )}
               </div>
 
+              {/* Categorías */}
               <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-hide">
                 {categories.map(c => (
-                  <button
+                  <TapButton
                     key={c}
-                    onClick={() => setMenuCat(c)}
-                    className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap font-bold transition-colors ${
-                      menuCat === c ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    onTap={() => setMenuCat(c)}
+                    className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-bold transition-colors shrink-0 ${
+                      menuCat === c ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300'
                     }`}
+                    style={{ minHeight: 36 }}
                   >
                     {c}
-                  </button>
+                  </TapButton>
                 ))}
               </div>
 
-              <div className="h-48 lg:h-28 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1.5 pr-0.5">
+              {/* Grid de productos — cards grandes y fáciles de tocar */}
+              <div className="h-52 lg:h-36 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2 pr-0.5">
                 {filteredMenu.map(m => (
-                  <button
+                  <TapButton
                     key={m.id}
-                    onClick={() => addItemToCart(m)}
-                    className="text-left bg-white border border-gray-200 p-2 rounded-xl hover:border-amber-400 hover:shadow-sm transition-all flex flex-col justify-between active:scale-95"
+                    onTap={() => addItemToCart(m)}
+                    className="text-left bg-white border-2 border-gray-200 px-2.5 py-2 rounded-xl hover:border-amber-400 hover:shadow-sm active:bg-amber-50 active:border-amber-500 active:scale-[0.97] transition-all flex flex-col justify-between"
+                    style={{ minHeight: 56 }}
                   >
-                    <p className="text-xs font-bold text-gray-700 line-clamp-2 group-hover:text-amber-600 leading-tight break-words">{m.nombre}</p>
-                    <p className="text-[10px] font-semibold text-gray-400 mt-1">{money(m.valor)}</p>
-                  </button>
+                    <p className="text-xs font-bold text-gray-700 line-clamp-2 leading-tight break-words">{m.nombre}</p>
+                    <p className="text-[10px] font-semibold text-amber-600 mt-1">{money(m.valor)}</p>
+                  </TapButton>
                 ))}
               </div>
 
-              {/* Botones guardar / cancelar */}
+              {/* Guardar / Cancelar */}
               <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
-                <button
-                  onClick={onCancelEdit}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl font-semibold text-sm transition-colors"
+                <TapButton
+                  onTap={onCancelEdit}
+                  className="px-4 py-3 text-gray-600 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-xl font-semibold text-sm transition-colors"
                 >
                   Cancelar
-                </button>
-                <button
-                  onClick={() => onSaveEdit(order)}
-                  className="flex-1 justify-center px-5 py-2.5 bg-gray-900 hover:bg-black text-white rounded-xl font-black flex items-center gap-2 text-sm shadow-lg active:scale-95 transition-all"
+                </TapButton>
+                <TapButton
+                  onTap={() => onSaveEdit(order)}
+                  className="flex-1 justify-center px-5 py-3 bg-gray-900 hover:bg-black active:bg-gray-700 text-white rounded-xl font-black flex items-center gap-2 text-sm shadow-lg transition-all"
                 >
                   <Save size={16} /> Guardar cambios
-                </button>
+                </TapButton>
               </div>
             </div>
           </div>
@@ -556,22 +530,22 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
     );
   }
 
-  // === MODO LECTURA ===
+  // ════════════════════════════════════════════
+  // MODO LECTURA
+  // ════════════════════════════════════════════
   const itemsPreview = parseDetailsForView(order['detalle pedido']);
 
   return (
     <div
       id={`pedido-${order.row_number}`}
-      className={`rounded-2xl border-2 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${ui.card}`}
+      className={`rounded-2xl border-2 p-5 transition-all duration-200 ${ui.card}`}
     >
       {/* Header: número + estado */}
       <div className="flex items-center gap-2.5 mb-3">
         <span className="font-mono text-xs font-bold text-gray-500 bg-white/70 px-2 py-0.5 rounded-lg border border-gray-200/60">
           #{order.row_number}
         </span>
-        <span
-          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${ui.badge}`}
-        >
+        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${ui.badge}`}>
           {order.estado}
         </span>
       </div>
@@ -605,11 +579,10 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
         </p>
       </div>
 
+      {/* Items preview */}
       <div className="bg-white/60 rounded-xl border border-gray-200/60 p-1 overflow-hidden text-sm shadow-sm">
         {itemsPreview.length === 0 ? (
-          <p className="text-center text-gray-400 text-xs py-2 italic">
-            Sin detalles registrados
-          </p>
+          <p className="text-center text-gray-400 text-xs py-2 italic">Sin detalles registrados</p>
         ) : (
           itemsPreview.map((item, idx) => (
             <div
@@ -620,9 +593,7 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
                 <span className="font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md text-xs min-w-[28px] text-center shrink-0 mt-0.5">
                   {item.quantity}
                 </span>
-                <span className="text-gray-800 font-medium break-words leading-tight">
-                  {item.name}
-                </span>
+                <span className="text-gray-800 font-medium break-words leading-tight">{item.name}</span>
               </div>
               <span className="text-gray-600 text-xs whitespace-nowrap font-bold tabular-nums shrink-0 ml-2">
                 {money(item.priceTotal)}
@@ -632,25 +603,25 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
         )}
       </div>
 
-      {/* Botones de acción */}
+      {/* Botones de acción principales — grandes, fáciles de tocar */}
       <div className="mt-3 flex gap-2">
-        <button
-          onClick={() => onStartEdit(order)}
-          className="flex-1 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95"
+        <TapButton
+          onTap={() => onStartEdit(order)}
+          className="flex-1 px-3 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100 transition-all shadow-sm"
         >
           Editar
-        </button>
-        <button
-          onClick={() => onPrint(order)}
-          className="flex-1 px-3 py-2 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+        </TapButton>
+        <TapButton
+          onTap={() => onPrint(order)}
+          className="flex-1 px-3 py-3 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black active:bg-gray-700 flex items-center justify-center gap-2 shadow-md transition-all"
         >
           <Printer size={15} /> Imprimir
-        </button>
+        </TapButton>
       </div>
 
-      {/* Resumen financiero + botones */}
+      {/* Resumen financiero + selects de estado/pago */}
       <div className="mt-3 flex items-start gap-3">
-        {/* Totales compactos */}
+        {/* Totales */}
         <div className="bg-white/80 rounded-xl border border-gray-200/60 px-3 py-2 flex-1 min-w-[130px]">
           <div className="flex justify-between items-center text-xs text-gray-500 mb-0.5">
             <span>Rest</span>
@@ -666,35 +637,32 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
           </div>
         </div>
 
-        {/* Controles de estado y pay */}
+        {/* Selects de estado y pago */}
         <div className="flex flex-col gap-2 shrink-0">
-          <div className="relative">
-            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-              <CreditCard size={11} />
+          {onPaymentMethodChange && (
+            <div className="relative">
+              <CreditCard size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <select
+                value={order.metodo_pago || 'efectivo'}
+                onChange={e => onPaymentMethodChange(order, e.target.value)}
+                className="text-xs appearance-none bg-white/80 hover:bg-white border border-gray-200 hover:border-gray-300 rounded-lg pl-6 pr-7 py-2 font-semibold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 outline-none"
+                style={{ touchAction: 'manipulation' }}
+              >
+                {paymentMethods.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
-            <select
-              value={order.metodo_pago || 'efectivo'}
-              onChange={e => onPaymentMethodChange(order, e.target.value)}
-              className="text-xs appearance-none bg-white/80 hover:bg-white border border-gray-200 hover:border-gray-300 rounded-lg pl-6 pr-7 py-1.5 font-semibold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 outline-none"
-            >
-              {paymentMethods.map(method => (
-                <option key={method} value={method}>{method}</option>
-              ))}
-            </select>
-            <ArrowUpDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
-
+          )}
           <div className="relative">
             <select
               value={order.estado}
-              onChange={(e) => onStatusChange(order, e.target.value)}
-              className="text-xs appearance-none bg-gray-100 hover:bg-gray-200 border border-transparent hover:border-gray-300 rounded-lg px-3 py-1.5 font-semibold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 outline-none pr-7 w-full"
+              onChange={e => onStatusChange(order, e.target.value)}
+              className="text-xs appearance-none bg-gray-100 hover:bg-gray-200 border border-transparent hover:border-gray-300 rounded-lg px-3 py-2 font-semibold text-gray-600 cursor-pointer transition-all focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 outline-none pr-7 w-full"
+              style={{ touchAction: 'manipulation' }}
             >
-              {allowedStatuses.map(st => (
-                <option key={st} value={st}>{st}</option>
-              ))}
+              {allowedStatuses.map(st => <option key={st} value={st}>{st}</option>)}
             </select>
-            <ArrowUpDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
         </div>
       </div>

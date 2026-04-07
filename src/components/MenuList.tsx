@@ -29,6 +29,11 @@ const MenuList: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Scroll suave al inicio al cambiar de categoría
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [selectedCategory]);
+
   // Procesamiento de items
   const sortedItems = useMemo(() => {
     return [...filteredItems]

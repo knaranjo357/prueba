@@ -902,9 +902,9 @@ const Dictado: React.FC<DictadoProps> = ({ meseroName }) => {
                     
                     // Acciones
                     onCancelEdit={cancelEdit}
-                    onSaveEdit={() => saveEdit(orderForCard)}
-                    onStartEdit={() => startEdit(orderForCard)}
-                    onPrint={() => printDictadoOrder(orderForCard)}
+                    onSaveEdit={saveEdit}
+                    onStartEdit={startEdit}
+                    onPrint={printDictadoOrder}
                     onStatusChange={updateOrderEstado}
                   />
                 );

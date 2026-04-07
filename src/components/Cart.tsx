@@ -10,6 +10,7 @@ import SimplifiedCheckoutWizard from './SimplifiedCheckoutWizard';
 const Cart: React.FC = () => {
   const { items, clearCart } = useCart();
   const [isOpen, setIsOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState<'cart' | 'checkout' | 'success'>('cart');
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo>({
     name: '',
@@ -52,6 +53,8 @@ const Cart: React.FC = () => {
   };
 
   const handleSubmitOrder = async (deliveryPrice: number) => {
+    if (isSubmitting) return; // guard extra
+    setIsSubmitting(true);
     try {
       const detalleItems =
         items
@@ -91,6 +94,7 @@ const Cart: React.FC = () => {
     } catch (error) {
       console.error('Error submitting order:', error);
       alert('Error al enviar el pedido. Por favor intente nuevamente.');
+      setIsSubmitting(false); // permitir reintento solo si falló
     }
   };
 
@@ -206,6 +210,7 @@ const Cart: React.FC = () => {
                         setCustomerInfo={setCustomerInfo}
                         onBack={() => setStep('cart')}
                         onSubmit={handleSubmitOrder}
+                        isSubmitting={isSubmitting}
                       />
                     </motion.div>
                   )}
