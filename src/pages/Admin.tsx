@@ -14,6 +14,7 @@ import {
   Lock,
   MoreHorizontal,
   X,
+  PhoneOff,
 } from 'lucide-react';
 
 // Importación de componentes
@@ -24,6 +25,7 @@ import ClientesTab from './AdminClientes';
 import VariablesTab from './AdminVariables';
 import ResultadosTab from './AdminResultados';
 import Manual from './Manual';
+import IgnorarTab from './AdminIgnorar';
 
 // --- TIPOS Y CONFIGURACIÓN ---
 
@@ -50,7 +52,8 @@ type TabKey =
   | 'domicilios'
   | 'clientes'
   | 'variables'
-  | 'resultados';
+  | 'resultados'
+  | 'ignorar';
 
 // Mapeo tab → segmento URL
 const TAB_TO_PATH: Record<TabKey, string> = {
@@ -61,6 +64,7 @@ const TAB_TO_PATH: Record<TabKey, string> = {
   clientes: 'clientes',
   variables: 'config',
   resultados: 'reportes',
+  ignorar: 'ignorar',
 };
 
 // Mapeo segmento URL → tab
@@ -110,6 +114,12 @@ const TABS_CONFIG: TabDef[] = [
     id: 'variables',
     label: 'Config',
     icon: <Settings size={22} />,
+    roles: ['SUPER_ADMIN', 'WPP_CFG'],
+  },
+  {
+    id: 'ignorar',
+    label: 'Ignorar',
+    icon: <PhoneOff size={22} />,
     roles: ['SUPER_ADMIN', 'WPP_CFG'],
   },
   {
@@ -396,6 +406,7 @@ const Admin: React.FC = () => {
           {activeTab === 'clientes' && allAvailable.some(t => t.id === 'clientes') && <ClientesTab />}
           {activeTab === 'variables' && allAvailable.some(t => t.id === 'variables') && <VariablesTab />}
           {activeTab === 'resultados' && allAvailable.some(t => t.id === 'resultados') && <ResultadosTab />}
+          {activeTab === 'ignorar' && allAvailable.some(t => t.id === 'ignorar') && <IgnorarTab />}
         </div>
       </main>
 

@@ -12,6 +12,7 @@ import {
   Eye,
   Download,
 } from 'lucide-react';
+import { PromptWeaver, PromptFragment, PROMPT_AGENTS } from '../components/PromptWeaver';
 
 const VARS_API = 'https://n8n.alliasoft.com/webhook/luis-res/variables';
 const WPP_API = 'https://n8n.alliasoft.com/webhook/luis-res/wpp';
@@ -66,10 +67,14 @@ const AdminVariables: React.FC = () => {
   const [wppQr, setWppQr] = useState<string | null>(null);
   const [wppConnected, setWppConnected] = useState<boolean>(false);
 
-  const hasChanges = useMemo(
-    () => JSON.stringify(form) !== JSON.stringify(initial),
-    [form, initial]
-  );
+  const [fragments, setFragments] = useState<PromptFragment[]>([]);
+  const [initialFragments, setInitialFragments] = useState<PromptFragment[]>([]);
+
+  const hasChanges = useMemo(() => {
+    const basicChanged = JSON.stringify(form) !== JSON.stringify(initial);
+    const fragmentsChanged = JSON.stringify(fragments) !== JSON.stringify(initialFragments);
+    return basicChanged || fragmentsChanged;
+  }, [form, initial, fragments, initialFragments]);
 
   const fetchVars = useCallback(async () => {
     setLoading(true);
@@ -96,6 +101,18 @@ const AdminVariables: React.FC = () => {
 
       setForm(next);
       setInitial(next);
+
+      if (data.agentes) {
+        try {
+          const parsed = JSON.parse(data.agentes);
+          if (Array.isArray(parsed)) {
+            setFragments(parsed);
+            setInitialFragments(parsed);
+          }
+        } catch (e) {
+          console.error("Error parsing agentes", e);
+        }
+      }
     } catch (e: any) {
       console.error(e);
       setError(e?.message || 'Error al cargar las variables');
@@ -109,6 +126,15 @@ const AdminVariables: React.FC = () => {
     setError('');
     setOk('');
 
+    const compiledPrompts: Record<string, string> = {};
+    PROMPT_AGENTS.forEach(({ id }) => {
+      compiledPrompts[id] = fragments
+        .filter(f => f.agentIds.includes(id))
+        .map(f => f.text)
+        .filter(t => t.trim())
+        .join('\n\n');
+    });
+
     try {
       const res = await fetch(VARS_API, {
         method: 'POST',
@@ -120,20 +146,23 @@ const AdminVariables: React.FC = () => {
           nequi: form['nequi'],
           almuerzo: form['almuerzo'],
           frase: form['frase'],
+          agentes: JSON.stringify(fragments),
+          ...compiledPrompts
         }),
       });
 
       if (!res.ok) throw new Error(`No se pudieron guardar los cambios (${res.status})`);
 
       setInitial(form);
-      setOk('Información actualizada correctamente.');
+      setInitialFragments([...fragments]);
+      setOk('Toda la información ha sido actualizada correctamente.');
     } catch (e: any) {
       console.error(e);
       setError(e?.message || 'Error al guardar');
     } finally {
       setSaving(false);
     }
-  }, [form]);
+  }, [form, fragments]);
 
   const openWppModal = useCallback(async () => {
     setWppModalOpen(true);
@@ -416,6 +445,12 @@ const AdminVariables: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* === SECCIÓN 3: PROMPT WEAVER === */}
+      <PromptWeaver
+        fragments={fragments}
+        onFragmentsChange={setFragments}
+      />
 
       {/* Modal Conectar WPP */}
       {wppModalOpen && (
