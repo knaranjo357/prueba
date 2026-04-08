@@ -84,14 +84,14 @@ const allowedStatuses = [
 
 const getStatusUI = (estado?: string) => {
   const s = (estado || '').toLowerCase().trim();
-  if (s === 'pidiendo')    return { card: 'bg-yellow-50 border-yellow-200',  badge: 'bg-yellow-100 text-yellow-800 border border-yellow-200',  dot: 'bg-yellow-400' };
-  if (s === 'confirmado')  return { card: 'bg-orange-50 border-orange-200',  badge: 'bg-orange-100 text-orange-800 border border-orange-200',  dot: 'bg-orange-500' };
-  if (s === 'impreso')     return { card: 'bg-sky-50 border-sky-200',        badge: 'bg-sky-100 text-sky-800 border border-sky-200',           dot: 'bg-sky-500'    };
-  if (s === 'preparando')  return { card: 'bg-violet-50 border-violet-200',  badge: 'bg-violet-100 text-violet-800 border border-violet-200',  dot: 'bg-violet-500' };
-  if (s === 'en camino')   return { card: 'bg-cyan-50 border-cyan-200',      badge: 'bg-cyan-100 text-cyan-800 border border-cyan-200',        dot: 'bg-cyan-500'   };
-  if (s === 'entregado')   return { card: 'bg-emerald-50 border-emerald-200',badge: 'bg-emerald-100 text-emerald-800 border border-emerald-200',dot: 'bg-emerald-500'};
-  if (s === 'con problema')return { card: 'bg-rose-50 border-rose-300',      badge: 'bg-rose-100 text-rose-800 border border-rose-300',        dot: 'bg-rose-500'   };
-  return { card: 'bg-white border-gray-200', badge: 'bg-gray-100 text-gray-700 border border-gray-200', dot: 'bg-gray-400' };
+  if (s === 'pidiendo')    return { card: 'bg-yellow-50 border-yellow-400 ring-yellow-400/20',  badge: 'bg-yellow-100 text-yellow-800 border border-yellow-400',  dot: 'bg-yellow-400' };
+  if (s === 'confirmado')  return { card: 'bg-orange-50 border-orange-400 ring-orange-400/20',  badge: 'bg-orange-100 text-orange-800 border border-orange-400',  dot: 'bg-orange-500' };
+  if (s === 'impreso')     return { card: 'bg-sky-50 border-sky-400 ring-sky-400/20',        badge: 'bg-sky-100 text-sky-800 border border-sky-400',           dot: 'bg-sky-500'    };
+  if (s === 'preparando')  return { card: 'bg-violet-50 border-violet-400 ring-violet-400/20',  badge: 'bg-violet-100 text-violet-800 border border-violet-400',  dot: 'bg-violet-500' };
+  if (s === 'en camino')   return { card: 'bg-cyan-50 border-cyan-400 ring-cyan-400/20',      badge: 'bg-cyan-100 text-cyan-800 border border-cyan-400',        dot: 'bg-cyan-500'   };
+  if (s === 'entregado')   return { card: 'bg-emerald-50 border-emerald-400 ring-emerald-400/20',badge: 'bg-emerald-100 text-emerald-800 border border-emerald-400',dot: 'bg-emerald-500'};
+  if (s === 'con problema')return { card: 'bg-rose-50 border-rose-500 ring-rose-500/20',      badge: 'bg-rose-100 text-rose-800 border border-rose-500',        dot: 'bg-rose-500'   };
+  return { card: 'bg-white border-gray-300 ring-gray-300/20', badge: 'bg-gray-100 text-gray-700 border border-gray-300', dot: 'bg-gray-400' };
 };
 
 // === LOGICA DE PARSEO ===
@@ -538,7 +538,7 @@ const TarjetaPedido: React.FC<TarjetaPedidoProps> = ({
   return (
     <div
       id={`pedido-${order.row_number}`}
-      className={`rounded-2xl border-2 p-5 transition-all duration-200 ${ui.card}`}
+      className={`rounded-2xl border-4 p-5 transition-all duration-200 shadow-xl ring-4 ${ui.card}`}
     >
       {/* Header: número + estado */}
       <div className="flex items-center gap-2.5 mb-3">
