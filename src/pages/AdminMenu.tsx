@@ -26,6 +26,7 @@ const ALMUERZO_EXTRA_NAMES = [
   'porcion arroz con verduras',
   'sopa del dia',
   'media sopa del dia',
+  'porcion de ensalada',
 ];
 
 const ALMUERZO_EXTRA_SET = new Set(ALMUERZO_EXTRA_NAMES.map(normalizeText));
@@ -139,8 +140,8 @@ const MenuTab: React.FC = () => {
         selectedCategory === 'Todas'
           ? true
           : selectedCategoryNormalized === 'almuerzo'
-          ? isLunchGroupedItem(item)
-          : (item.categorias || []).some(
+            ? isLunchGroupedItem(item)
+            : (item.categorias || []).some(
               (c: string) => normalizeText(c) === selectedCategoryNormalized
             );
 
@@ -193,9 +194,8 @@ const MenuTab: React.FC = () => {
             <button
               onClick={forceFetchMenuItems}
               disabled={loading}
-              className={`p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-all ${
-                loading ? 'animate-spin' : ''
-              }`}
+              className={`p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-all ${loading ? 'animate-spin' : ''
+                }`}
               title="Actualizar menú"
             >
               <RefreshCw size={15} />
@@ -241,11 +241,10 @@ const MenuTab: React.FC = () => {
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`whitespace-nowrap text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${
-                    selectedCategory === cat
+                  className={`whitespace-nowrap text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${selectedCategory === cat
                       ? 'bg-gold text-white shadow-md shadow-gold/20'
                       : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   {cat}
                   {selectedCategory === cat && (
@@ -290,31 +289,28 @@ const MenuTab: React.FC = () => {
             return (
               <div
                 key={String(item.id)}
-                className={`group relative rounded-lg border transition-all duration-300 flex flex-col overflow-hidden ${
-                  isAvailable
+                className={`group relative rounded-lg border transition-all duration-300 flex flex-col overflow-hidden ${isAvailable
                     ? 'bg-white border-gray-200 hover:shadow-md hover:-translate-y-0.5 hover:border-gold/30'
                     : 'bg-gray-50 border-gray-200 opacity-75 grayscale-[0.5]'
-                }`}
+                  }`}
               >
                 <div className={`h-0.5 w-full ${isAvailable ? 'bg-gold' : 'bg-gray-300'}`} />
 
                 <div className="p-4 flex flex-col flex-1">
                   <div className="flex justify-between items-start gap-2 mb-2">
                     <h3
-                      className={`font-bold text-base leading-tight ${
-                        isAvailable
+                      className={`font-bold text-base leading-tight ${isAvailable
                           ? 'text-gray-800'
                           : 'text-gray-500 line-through decoration-gray-400'
-                      }`}
+                        }`}
                     >
                       {item.nombre}
                     </h3>
 
                     <button
                       onClick={() => updateMenuItemAvailability(item, !item.disponible)}
-                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gold/50 focus:ring-offset-2 ${
-                        item.disponible ? 'bg-green-500' : 'bg-gray-300'
-                      }`}
+                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gold/50 focus:ring-offset-2 ${item.disponible ? 'bg-green-500' : 'bg-gray-300'
+                        }`}
                       title={
                         item.disponible
                           ? 'Marcar como Agotado'
@@ -323,9 +319,8 @@ const MenuTab: React.FC = () => {
                     >
                       <span className="sr-only">Disponibilidad</span>
                       <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          item.disponible ? 'translate-x-5' : 'translate-x-0'
-                        }`}
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${item.disponible ? 'translate-x-5' : 'translate-x-0'
+                          }`}
                       />
                     </button>
                   </div>
@@ -334,11 +329,10 @@ const MenuTab: React.FC = () => {
                     {item.categorias?.map((categoria: string) => (
                       <span
                         key={categoria}
-                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${
-                          isAvailable
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${isAvailable
                             ? 'bg-amber-50 text-amber-700 border border-amber-100'
                             : 'bg-gray-100 text-gray-500 border border-gray-200'
-                        }`}
+                          }`}
                       >
                         <Tag size={9} className="mr-1" /> {categoria}
                       </span>
@@ -357,9 +351,8 @@ const MenuTab: React.FC = () => {
                         Precio
                       </span>
                       <span
-                        className={`text-lg font-bold ${
-                          isAvailable ? 'text-gray-900' : 'text-gray-400'
-                        }`}
+                        className={`text-lg font-bold ${isAvailable ? 'text-gray-900' : 'text-gray-400'
+                          }`}
                       >
                         {formatPrice(item.valor)}
                       </span>
