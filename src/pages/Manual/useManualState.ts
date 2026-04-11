@@ -382,14 +382,10 @@ export const useManualOrder = (onOrderSaved?: () => void) => {
         if (cartOpenMobile) setCartOpenMobile(false);
         return;
       }
-      if (isTypingElement(e.target)) return;
-      const isMod = e.ctrlKey || e.metaKey;
-      if (isMod && e.key.toLowerCase() === "s") { e.preventDefault(); saveOrder(); return; }
-      if (e.key === "Enter") { e.preventDefault(); saveOrder(); }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saveOrder, barrioOpen, cartOpenMobile, noteModalOpen, closeNoteModal]);
+  }, [barrioOpen, cartOpenMobile, noteModalOpen, closeNoteModal]);
 
   return {
     mode, setMode, isTakeaway, hasDelivery,

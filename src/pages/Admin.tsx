@@ -10,7 +10,6 @@ import {
   Users,
   BarChart3,
   AudioLines,
-  ChefHat,
   Lock,
   MoreHorizontal,
   X,
@@ -225,8 +224,8 @@ const Admin: React.FC = () => {
         <div className="bg-white/85 backdrop-blur-2xl p-8 rounded-3xl shadow-2xl w-full max-w-md border border-white/60 relative z-10">
           {/* Logo */}
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-amber-500/30 mb-4">
-              <ChefHat className="text-white" size={30} />
+            <div className="w-16 h-16 mx-auto mb-4">
+              <img src="/images/logo.png" alt="Logo Luis Res" className="w-full h-full object-contain drop-shadow-md" />
             </div>
             <h1 className="text-2xl font-black text-gray-900 tracking-tight">Luis Res</h1>
             <p className="text-gray-400 text-sm mt-1 font-medium">Panel de Administración</p>
@@ -334,8 +333,8 @@ const Admin: React.FC = () => {
         <div className="max-w-7xl mx-auto px-5 h-14 flex items-center justify-between gap-4">
           {/* Logo + nombre */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center text-white shadow-sm shadow-amber-400/30">
-              <ChefHat size={17} />
+            <div className="w-8 h-8">
+              <img src="/images/logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
             <div className="flex flex-col leading-none">
               <span className="font-black text-gray-900 text-sm tracking-tight">Luis Res</span>
@@ -372,8 +371,8 @@ const Admin: React.FC = () => {
       {/* ── HEADER MOBILE ──────────────────────── */}
       <header className="md:hidden bg-white border-b border-gray-100 px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center text-white shadow-sm">
-            <ChefHat size={16} />
+          <div className="w-8 h-8">
+            <img src="/images/logo.png" alt="Logo" className="w-full h-full object-contain" />
           </div>
           <span className="font-black text-gray-900 text-sm tracking-tight">Luis Res</span>
         </div>

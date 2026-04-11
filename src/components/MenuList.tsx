@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChefHat, Image as ImageIcon, Plus, Minus, Search, X as XIcon } from 'lucide-react';
+import { Image as ImageIcon, Plus, Minus, Search, X as XIcon } from 'lucide-react';
 import MenuItemModal from './MenuItemModal';
 import MenuImageModal from './MenuImageModal';
 import { useMenu } from '../context/MenuContext';
@@ -86,10 +86,10 @@ const MenuList: React.FC = () => {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-cream/30">
         <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          animate={{ scale: [1, 1.1, 1] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
         >
-          <ChefHat size={48} className="text-gold mb-4" />
+          <img src="/images/logo.png" alt="Cargando" className="w-16 h-16 object-contain mb-4 drop-shadow-md" />
         </motion.div>
         <p className="text-wood-medium font-medium animate-pulse">Preparando el menú...</p>
       </div>
@@ -106,8 +106,8 @@ const MenuList: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between gap-4 mb-3">
             <div className="flex items-center gap-2">
-              <div className="bg-gold/10 p-2 rounded-xl">
-                <ChefHat className="text-gold w-6 h-6 md:w-8 md:h-8" />
+              <div className="w-8 h-8 md:w-10 md:h-10">
+                <img src="/images/logo.png" alt="Logo" className="w-full h-full object-contain drop-shadow-sm" />
               </div>
               <div>
                 <h1 className="text-xl md:text-2xl font-bold text-wood-dark leading-none">Menú</h1>
