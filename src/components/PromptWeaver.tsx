@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import {
   Plus,
   Trash2,
@@ -105,8 +105,8 @@ function PreviewModal({ initialAgentId, fragments, onClose }: PreviewModalProps)
                 type="button"
                 onClick={() => setActiveId(a.id)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${isActive
-                    ? `${a.activeBg} text-white shadow-sm`
-                    : 'text-gray-500 hover:bg-gray-200'
+                  ? `${a.activeBg} text-white shadow-sm`
+                  : 'text-gray-500 hover:bg-gray-200'
                   }`}
               >
                 {a.short}
@@ -156,10 +156,10 @@ function PreviewModal({ initialAgentId, fragments, onClose }: PreviewModalProps)
               onClick={copy}
               disabled={!compiled}
               className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${copied
-                  ? 'bg-green-600 text-white'
-                  : compiled
-                    ? 'bg-gray-900 hover:bg-black text-white shadow-sm hover:scale-105 transform'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                ? 'bg-green-600 text-white'
+                : compiled
+                  ? 'bg-gray-900 hover:bg-black text-white shadow-sm hover:scale-105 transform'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 }`}
             >
               {copied ? <Check size={15} /> : <Copy size={15} />}
@@ -198,7 +198,7 @@ function FragmentCard({ fragment, index, total, onUpdate, onDelete, onMoveUp, on
       const currentHeight = textarea.style.height;
       textarea.style.height = 'auto';
       const newHeight = textarea.scrollHeight;
-      
+
       // Solo aplicamos si hay cambio real para evitar layouts innecesarios
       if (currentHeight !== `${newHeight}px`) {
         textarea.style.height = `${newHeight}px`;
@@ -233,31 +233,89 @@ function FragmentCard({ fragment, index, total, onUpdate, onDelete, onMoveUp, on
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-purple-300 hover:shadow-md transition-all group">
-      <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-        <span className="w-5 h-5 flex-shrink-0 rounded-full bg-gray-100 text-gray-500 text-[10px] font-black flex items-center justify-center">
-          {index + 1}
-        </span>
-        <div className="flex-1" />
-        <button type="button" onClick={() => onMoveUp(fragment.id)} disabled={isFirst}
-          title="Mover arriba"
-          className="p-1 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-20 disabled:cursor-not-allowed">
-          <ArrowUp size={14} />
-        </button>
-        <button type="button" onClick={() => onMoveDown(fragment.id)} disabled={isLast}
-          title="Mover abajo"
-          className="p-1 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-20 disabled:cursor-not-allowed">
-          <ArrowDown size={14} />
-        </button>
-        <div className="w-px h-4 bg-gray-200 mx-0.5" />
-        <button type="button" onClick={() => onDelete(fragment.id)}
-          title="Eliminar fragmento"
-          className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
-          <Trash2 size={14} />
-        </button>
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-purple-300 hover:shadow-md transition-all group overflow-hidden">
+      {/* Cabecera Pegajosa (Sticky) */}
+      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-gray-50 shadow-sm">
+        <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+          <span className="w-5 h-5 flex-shrink-0 rounded-full bg-gray-100 text-gray-500 text-[10px] font-black flex items-center justify-center">
+            {index + 1}
+          </span>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => onMoveUp(fragment.id)}
+            disabled={isFirst}
+            title="Mover arriba"
+            className="p-1 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+          >
+            <ArrowUp size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onMoveDown(fragment.id)}
+            disabled={isLast}
+            title="Mover abajo"
+            className="p-1 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+          >
+            <ArrowDown size={14} />
+          </button>
+          <div className="w-px h-4 bg-gray-200 mx-0.5" />
+          <button
+            type="button"
+            onClick={() => onDelete(fragment.id)}
+            title="Eliminar fragmento"
+            className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+
+        <div className="px-4 pb-3 pt-1 flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1 flex-shrink-0">
+            Para:
+          </span>
+
+          {PROMPT_AGENTS.map((agent) => {
+            const isActive = fragment.agentIds.includes(agent.id);
+            return (
+              <button
+                key={agent.id}
+                type="button"
+                onClick={() => toggleAgent(agent.id)}
+                className={`group/tag relative px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all duration-150 flex items-center gap-1 ${isActive
+                    ? `${agent.activeBg} border-transparent text-white shadow-sm`
+                    : 'bg-white border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600'
+                  }`}
+              >
+                {agent.short}
+                {isActive && (
+                  <span
+                    role="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPreview(agent.id);
+                    }}
+                    title={`Ver prompt de ${agent.name}`}
+                    className="opacity-0 group-hover/tag:opacity-100 transition-opacity cursor-pointer ml-0.5"
+                  >
+                    <Eye size={10} />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="ml-auto text-[10px] font-bold text-gray-400 hover:text-purple-600 transition-colors flex-shrink-0"
+          >
+            {fragment.agentIds.length === PROMPT_AGENTS.length ? 'Ninguno' : 'Todos'}
+          </button>
+        </div>
       </div>
 
-      <div className="px-4 pb-3">
+      <div className="px-4 py-4">
         <textarea
           ref={textareaRef}
           className="w-full text-[14px] resize-none outline-none placeholder:text-gray-300 font-mono leading-relaxed text-gray-800 bg-transparent border-0 p-0 focus:ring-0 min-h-[40px] transition-none overflow-hidden"
@@ -269,43 +327,7 @@ function FragmentCard({ fragment, index, total, onUpdate, onDelete, onMoveUp, on
         />
       </div>
 
-      <div className="px-4 pb-3 pt-2 border-t border-gray-50 flex items-center gap-2 flex-wrap">
-        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1 flex-shrink-0">Para:</span>
 
-        {PROMPT_AGENTS.map(agent => {
-          const isActive = fragment.agentIds.includes(agent.id);
-          return (
-            <button
-              key={agent.id}
-              type="button"
-              onClick={() => toggleAgent(agent.id)}
-              className={`group/tag relative px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all duration-150 flex items-center gap-1 ${isActive
-                  ? `${agent.activeBg} border-transparent text-white shadow-sm`
-                  : 'bg-white border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600'
-                }`}
-            >
-              {agent.short}
-              {isActive && (
-                <span
-                  role="button"
-                  onClick={e => { e.stopPropagation(); onPreview(agent.id); }}
-                  title={`Ver prompt de ${agent.name}`}
-                  className="opacity-0 group-hover/tag:opacity-100 transition-opacity cursor-pointer ml-0.5"
-                >
-                  <Eye size={10} />
-                </span>
-              )}
-            </button>
-          );
-        })}
-
-        <button
-          type="button" onClick={toggleAll}
-          className="ml-auto text-[10px] font-bold text-gray-400 hover:text-purple-600 transition-colors flex-shrink-0"
-        >
-          {fragment.agentIds.length === PROMPT_AGENTS.length ? 'Ninguno' : 'Todos'}
-        </button>
-      </div>
     </div>
   );
 }
@@ -370,8 +392,8 @@ export const PromptWeaver: React.FC<PromptWeaverProps> = ({ fragments, onFragmen
                   onClick={() => setPreviewAgentId(agent.id)}
                   title={`Ver prompt de ${agent.name}`}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all hover:scale-105 ${count > 0
-                      ? `${agent.lightBg} ${agent.border} ${agent.activeText}`
-                      : 'bg-white border-gray-200 text-gray-400'
+                    ? `${agent.lightBg} ${agent.border} ${agent.activeText}`
+                    : 'bg-white border-gray-200 text-gray-400'
                     }`}
                 >
                   <Eye size={11} />

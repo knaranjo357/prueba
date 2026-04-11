@@ -31,6 +31,13 @@ const URL_ALMUERZO_FESTIVO =
 const URL_CERRADO =
   'https://alliasoft.s3.us-east-2.amazonaws.com/restaurante-luisres/CERRADO.jpg';
 
+// Opciones precargadas para el menú
+const MENU_OPTIONS = {
+  sopa: ['Ajiaco', 'Avena', 'Arroz', 'Pastas'],
+  principio: ['Macarrones', 'Spageti', 'Lentejas', 'Frijol Rojo', 'Garbanzo'],
+  ensalada: ['Tomate, cebolla, repollo, lechuga y pepino'],
+};
+
 // Configuración de los 6 Agentes
 const AGENTS_CONFIG = [
   { label: 'Entre Semana', value: 'Almuerzo Entresemana', image: URL_ALMUERZO_SEMANA },
@@ -268,14 +275,31 @@ const AdminVariables: React.FC = () => {
             <div className="space-y-5">
               {/* Sopa */}
               <div className="relative group">
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
                   <Soup size={14} /> Sopa
                 </label>
+                
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {MENU_OPTIONS.sopa.map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => handleChange('sopa-dia', opt)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                        form['sopa-dia'] === opt 
+                          ? 'bg-amber-100 border-amber-400 text-amber-700 shadow-sm' 
+                          : 'bg-gray-50 border-gray-100 text-gray-500 hover:border-amber-200 hover:bg-white'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+
                 <input
                   type="text"
                   value={form['sopa-dia']}
                   onChange={(e) => handleChange('sopa-dia', e.target.value)}
-                  placeholder="Ej: Sancocho..."
+                  placeholder="Ej: Sancocho o escribe otra..."
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-medium text-gray-800"
                   disabled={loading}
                 />
@@ -283,14 +307,31 @@ const AdminVariables: React.FC = () => {
 
               {/* Principio */}
               <div className="relative group">
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
                   <Bean size={14} /> Principio
                 </label>
+
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {MENU_OPTIONS.principio.map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => handleChange('principio-dia', opt)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                        form['principio-dia'] === opt 
+                          ? 'bg-amber-100 border-amber-400 text-amber-700 shadow-sm' 
+                          : 'bg-gray-50 border-gray-100 text-gray-500 hover:border-amber-200 hover:bg-white'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+
                 <input
                   type="text"
                   value={form['principio-dia']}
                   onChange={(e) => handleChange('principio-dia', e.target.value)}
-                  placeholder="Ej: Frijoles..."
+                  placeholder="Ej: Frijoles o escribe otro..."
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-medium text-gray-800"
                   disabled={loading}
                 />
@@ -298,9 +339,26 @@ const AdminVariables: React.FC = () => {
 
               {/* Ensalada */}
               <div className="relative group">
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
                   <Salad size={14} /> Ensalada
                 </label>
+
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {MENU_OPTIONS.ensalada.map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => handleChange('ensalada-dia', opt)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                        form['ensalada-dia'] === opt 
+                          ? 'bg-amber-100 border-amber-400 text-amber-700 shadow-sm' 
+                          : 'bg-gray-50 border-gray-100 text-gray-500 hover:border-amber-200 hover:bg-white'
+                      }`}
+                    >
+                      Ensalada del día
+                    </button>
+                  ))}
+                </div>
+
                 <input
                   type="text"
                   value={form['ensalada-dia']}
@@ -456,7 +514,7 @@ const AdminVariables: React.FC = () => {
                     )}
                   </div>
                 </div>
-              );
+              )
             })}
           </div>
         </div>
