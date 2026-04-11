@@ -27,6 +27,7 @@ const ALMUERZO_EXTRA_NAMES = [
   'sopa del dia',
   'media sopa del dia',
   'porcion de ensalada',
+  'porcion de maduro',
 ];
 
 const ALMUERZO_EXTRA_SET = new Set(ALMUERZO_EXTRA_NAMES.map(normalizeText));
@@ -242,8 +243,8 @@ const MenuTab: React.FC = () => {
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
                   className={`whitespace-nowrap text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between group ${selectedCategory === cat
-                      ? 'bg-gold text-white shadow-md shadow-gold/20'
-                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    ? 'bg-gold text-white shadow-md shadow-gold/20'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                     }`}
                 >
                   {cat}
@@ -290,8 +291,8 @@ const MenuTab: React.FC = () => {
               <div
                 key={String(item.id)}
                 className={`group relative rounded-lg border transition-all duration-300 flex flex-col overflow-hidden ${isAvailable
-                    ? 'bg-white border-gray-200 hover:shadow-md hover:-translate-y-0.5 hover:border-gold/30'
-                    : 'bg-gray-50 border-gray-200 opacity-75 grayscale-[0.5]'
+                  ? 'bg-white border-gray-200 hover:shadow-md hover:-translate-y-0.5 hover:border-gold/30'
+                  : 'bg-gray-50 border-gray-200 opacity-75 grayscale-[0.5]'
                   }`}
               >
                 <div className={`h-0.5 w-full ${isAvailable ? 'bg-gold' : 'bg-gray-300'}`} />
@@ -300,8 +301,8 @@ const MenuTab: React.FC = () => {
                   <div className="flex justify-between items-start gap-2 mb-2">
                     <h3
                       className={`font-bold text-base leading-tight ${isAvailable
-                          ? 'text-gray-800'
-                          : 'text-gray-500 line-through decoration-gray-400'
+                        ? 'text-gray-800'
+                        : 'text-gray-500 line-through decoration-gray-400'
                         }`}
                     >
                       {item.nombre}
@@ -330,8 +331,8 @@ const MenuTab: React.FC = () => {
                       <span
                         key={categoria}
                         className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${isAvailable
-                            ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                            : 'bg-gray-100 text-gray-500 border border-gray-200'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                          : 'bg-gray-100 text-gray-500 border border-gray-200'
                           }`}
                       >
                         <Tag size={9} className="mr-1" /> {categoria}
