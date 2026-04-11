@@ -28,6 +28,7 @@ export interface Order {
   valor_domicilio: number;
   metodo_pago: string;
   estado: string;
+  fuente?: string;
 }
 
 export type MenuItem = {

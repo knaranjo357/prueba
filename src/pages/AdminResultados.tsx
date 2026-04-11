@@ -23,6 +23,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  Cell,
 } from 'recharts';
 
 const HISTORIAL_API = 'https://n8n.alliasoft.com/webhook/luis-res/historial';
@@ -34,6 +35,7 @@ interface HistorialRow {
   metodo_pago: string;
   estado?: string;
   'detalle pedido'?: string;
+  fuente?: string;
 }
 
 interface PaymentTotal {
@@ -54,6 +56,7 @@ interface MonthlyStats {
   pedidosSinDomicilio: number;
   paymentTotals: Record<string, PaymentTotal>;
   statusTotals: Record<string, number>;
+  sourceTotals: Record<string, number>;
 }
 
 interface DailyStats {
@@ -69,6 +72,7 @@ interface DailyStats {
   totalGeneral: number;
   isClosed: boolean;
   statusTotals: Record<string, number>;
+  sourceTotals: Record<string, number>;
 }
 
 interface ParsedFecha {
@@ -159,6 +163,9 @@ const normalizePaymentMethod = (value: unknown) =>
 
 const normalizeOrderStatus = (value: unknown) =>
   normalizeKey(value, 'sin_estado');
+
+const normalizeSource = (value: unknown) =>
+  normalizeKey(value, 'wpp');
 
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -265,6 +272,7 @@ const createEmptyDailyStat = (year: number, month: number, day: number): DailySt
     totalGeneral: 0,
     isClosed: true,
     statusTotals: {},
+    sourceTotals: {},
   };
 };
 
@@ -274,6 +282,7 @@ const normalizeHistorialRow = (row: HistorialRow): HistorialRow => ({
   valor_domicilio: toNumber(row.valor_domicilio),
   metodo_pago: normalizePaymentMethod(row.metodo_pago),
   estado: normalizeOrderStatus(row.estado),
+  fuente: normalizeSource(row.fuente),
 });
 
 const buildStatusBreakdown = (
@@ -323,6 +332,7 @@ const buildMonthlyStats = (historial: HistorialRow[]): MonthlyStats[] => {
         pedidosSinDomicilio: 0,
         paymentTotals: {},
         statusTotals: {},
+        sourceTotals: {},
       };
       map.set(monthKey, current);
     }
@@ -346,6 +356,7 @@ const buildMonthlyStats = (historial: HistorialRow[]): MonthlyStats[] => {
     current.paymentTotals[paymentMethod].total += total;
 
     current.statusTotals[orderStatus] = (current.statusTotals[orderStatus] ?? 0) + 1;
+    current.sourceTotals[row.fuente || 'wpp'] = (current.sourceTotals[row.fuente || 'wpp'] ?? 0) + 1;
   }
 
   return Array.from(map.values()).sort((a, b) => {
@@ -401,6 +412,7 @@ const buildDailyStats = (
     }
 
     current.statusTotals[orderStatus] = (current.statusTotals[orderStatus] ?? 0) + 1;
+    current.sourceTotals[row.fuente || 'wpp'] = (current.sourceTotals[row.fuente || 'wpp'] ?? 0) + 1;
   }
 
   return Array.from(map.values()).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
@@ -518,6 +530,13 @@ const RefreshButton: React.FC<{
   </button>
 );
 
+const SOURCE_COLORS: Record<string, string> = {
+  manual: '#3b82f6',
+  menu_digital: '#f59e0b',
+  wpp: '#22c55e',
+  sin_especificar: '#94a3b8',
+};
+
 const AdminResultados: React.FC = () => {
   const [historial, setHistorial] = useState<HistorialRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -608,12 +627,29 @@ const AdminResultados: React.FC = () => {
     return buildStatusBreakdown(selectedMonth.statusTotals, selectedMonth.pedidos);
   }, [selectedMonth]);
 
+  const monthSourceBreakdown = useMemo(() => {
+    if (!selectedMonth) return [];
+    return buildStatusBreakdown(selectedMonth.sourceTotals, selectedMonth.pedidos);
+  }, [selectedMonth]);
+
   const globalStatusBreakdown = useMemo(() => {
     const totals: Record<string, number> = {};
 
     monthlyStats.forEach((month) => {
       Object.entries(month.statusTotals).forEach(([status, count]) => {
         totals[status] = (totals[status] ?? 0) + count;
+      });
+    });
+
+    return buildStatusBreakdown(totals, globalStats.totalPedidos);
+  }, [monthlyStats, globalStats.totalPedidos]);
+
+  const globalSourceBreakdown = useMemo(() => {
+    const totals: Record<string, number> = {};
+
+    monthlyStats.forEach((month) => {
+      Object.entries(month.sourceTotals).forEach(([source, count]) => {
+        totals[source] = (totals[source] ?? 0) + count;
       });
     });
 
@@ -640,6 +676,9 @@ const AdminResultados: React.FC = () => {
         pedidos: m.pedidos,
         pedidosConDomicilio: m.pedidosConDomicilio,
         pedidosSinDomicilio: m.pedidosSinDomicilio,
+        manual: m.sourceTotals.manual || 0,
+        menu_digital: m.sourceTotals.menu_digital || 0,
+        wpp: m.sourceTotals.wpp || 0,
       })),
     [monthlyStats],
   );
@@ -685,6 +724,26 @@ const AdminResultados: React.FC = () => {
         count: item.count,
       })),
     [globalStatusBreakdown],
+  );
+
+  const monthSourceChartData = useMemo(
+    () =>
+      monthSourceBreakdown.map((item) => ({
+        id: item.status,
+        source: toTitleCase(item.status),
+        count: item.count,
+      })),
+    [monthSourceBreakdown],
+  );
+
+  const globalSourceChartData = useMemo(
+    () =>
+      globalSourceBreakdown.map((item) => ({
+        id: item.status,
+        source: toTitleCase(item.status),
+        count: item.count,
+      })),
+    [globalSourceBreakdown],
   );
 
   return (
@@ -809,56 +868,97 @@ const AdminResultados: React.FC = () => {
           </div>
 
           {monthlyChartData.length > 0 ? (
-            <PanelCard
-              title="Ventas por mes (histórico)"
-              description="Gráfica general de todos los meses."
-              icon={<BarChart2 size={18} className="text-gold" />}
-              right={
-                <span className="text-xs text-gray-500">
-                  {monthlyStats.length} mes(es) analizado(s)
-                </span>
-              }
-            >
-              <div className="w-full h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={monthlyChartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(v: number) => `${Math.round(v / 1000)}k`}
-                    />
-                    <Tooltip
-                      formatter={(value: number | string) => formatCOP(Number(value))}
-                      labelFormatter={(label: string) => `Mes: ${label}`}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar
-                      dataKey="restaurante"
-                      name="Restaurante"
-                      stackId="ventas"
-                      fill="#facc15"
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="domicilio"
-                      name="Domicilios"
-                      stackId="ventas"
-                      fill="#38bdf8"
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="total"
-                      name="Total"
-                      stroke="#0f172a"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </PanelCard>
+            <>
+              <PanelCard
+                title="Ventas por mes (histórico)"
+                description="Gráfica general de todos los meses."
+                icon={<BarChart2 size={18} className="text-gold" />}
+                right={
+                  <span className="text-xs text-gray-500">
+                    {monthlyStats.length} mes(es) analizado(s)
+                  </span>
+                }
+              >
+                <div className="w-full h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={monthlyChartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis
+                        tick={{ fontSize: 11 }}
+                        tickFormatter={(v: number) => `${Math.round(v / 1000)}k`}
+                      />
+                      <Tooltip
+                        formatter={(value: number | string) => formatCOP(Number(value))}
+                        labelFormatter={(label: string) => `Mes: ${label}`}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar
+                        dataKey="restaurante"
+                        name="Restaurante"
+                        stackId="ventas"
+                        fill="#facc15"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="domicilio"
+                        name="Domicilios"
+                        stackId="ventas"
+                        fill="#38bdf8"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="total"
+                        name="Total"
+                        stroke="#0f172a"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </PanelCard>
+
+              <PanelCard
+                title="Canales de Venta (Evolución)"
+                description="Comparativa mensual de pedidos por fuente."
+                icon={<PieChartIcon size={18} className="text-gold" />}
+              >
+                <div className="w-full h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={monthlyChartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar 
+                        dataKey="manual" 
+                        name="Manual" 
+                        stackId="a" 
+                        fill={SOURCE_COLORS.manual} 
+                        radius={[0, 0, 0, 0]} 
+                      />
+                      <Bar 
+                        dataKey="menu_digital" 
+                        name="Menú Digital" 
+                        stackId="a" 
+                        fill={SOURCE_COLORS.menu_digital} 
+                        radius={[0, 0, 0, 0]} 
+                      />
+                      <Bar 
+                        dataKey="wpp" 
+                        name="WhatsApp" 
+                        stackId="a" 
+                        fill={SOURCE_COLORS.wpp} 
+                        radius={[4, 4, 0, 0]} 
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </PanelCard>
+            </>
           ) : (
             !loading && (
               <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
@@ -868,6 +968,69 @@ const AdminResultados: React.FC = () => {
               </div>
             )
           )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <PanelCard
+              title="Fuente de pedidos (histórico)"
+              description="Distribución global del origen de los pedidos."
+              icon={<PieChartIcon size={18} className="text-gold" />}
+            >
+              {globalSourceBreakdown.length === 0 ? (
+                <EmptyState text="No hay datos de fuentes registrados." />
+              ) : (
+                <div className="w-full h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={globalSourceChartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" tick={{ fontSize: 11 }} />
+                      <YAxis
+                        type="category"
+                        dataKey="source"
+                        width={100}
+                        tick={{ fontSize: 11 }}
+                      />
+                      <Tooltip />
+                      <Bar
+                        dataKey="count"
+                        name="Pedidos"
+                        radius={[0, 4, 4, 0]}
+                      >
+                        {globalSourceChartData.map((entry) => (
+                          <Cell 
+                            key={`cell-${entry.id}`} 
+                            fill={SOURCE_COLORS[entry.id] || '#94a3b8'} 
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </PanelCard>
+
+            <PanelCard
+              title="Estado de pedidos (histórico)"
+              description="Distribución global por estados."
+              icon={<Activity size={18} className="text-gold" />}
+            >
+              <div className="space-y-3">
+                {globalStatusBreakdown.map((item) => (
+                  <div key={item.status} className="space-y-1">
+                    <div className="flex justify-between text-xs font-medium">
+                      <span className="text-gray-700">{toTitleCase(item.status)}</span>
+                      <span className="text-gray-500">{item.count} ({item.percentage.toFixed(1)}%)</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                      <div 
+                        className="bg-amber-400 h-full rounded-full transition-all duration-500" 
+                        style={{ width: `${item.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </PanelCard>
+          </div>
 
           <PanelCard
             title="Resumen por mes"
@@ -1360,6 +1523,95 @@ const AdminResultados: React.FC = () => {
                                 </td>
                                 <td className="py-2 pl-2 text-right tabular-nums">
                                   {p.percentage.toFixed(1)}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </PanelCard>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <PanelCard
+                    title="Fuente de pedidos (mes)"
+                    description="Distribución del origen de los pedidos para este mes."
+                    icon={<PieChartIcon size={18} className="text-gold" />}
+                  >
+                    {monthSourceBreakdown.length === 0 ? (
+                      <EmptyState text="No hay datos de fuentes para este mes." />
+                    ) : (
+                      <div className="w-full h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={monthSourceChartData} layout="vertical">
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                            <YAxis
+                              type="category"
+                              dataKey="source"
+                              width={100}
+                              tick={{ fontSize: 11 }}
+                            />
+                            <Tooltip
+                              formatter={(value: number | string) => [
+                                `${Number(value)} pedido(s)`,
+                                'Cantidad',
+                              ]}
+                            />
+                            <Bar
+                                dataKey="count"
+                                name="Pedidos"
+                                radius={[0, 4, 4, 0]}
+                            >
+                              {monthSourceChartData.map((entry) => (
+                                <Cell 
+                                  key={`cell-${entry.id}`} 
+                                  fill={SOURCE_COLORS[entry.id] || '#94a3b8'} 
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </PanelCard>
+
+                  <PanelCard
+                    title="Detalle por fuente"
+                    icon={<PieChartIcon size={18} className="text-gold" />}
+                  >
+                    {monthSourceBreakdown.length === 0 ? (
+                      <EmptyState text="No hay datos de fuentes para este mes." />
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b">
+                              <th className="py-2 pr-2">Fuente</th>
+                              <th className="py-2 px-2 text-right">Pedidos</th>
+                              <th className="py-2 pl-2 text-right">% del mes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {monthSourceBreakdown.map((s) => (
+                              <tr key={s.status} className="border-b last:border-0">
+                                <td className="py-2 pr-2">
+                                  <div className="flex items-center gap-2">
+                                    <div 
+                                      className="w-2 h-2 rounded-full shrink-0" 
+                                      style={{ backgroundColor: SOURCE_COLORS[s.status] || '#94a3b8' }}
+                                    />
+                                    <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                                      {toTitleCase(s.status)}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-2 px-2 text-right tabular-nums">
+                                  {s.count}
+                                </td>
+                                <td className="py-2 pl-2 text-right tabular-nums">
+                                  {s.percentage.toFixed(1)}%
                                 </td>
                               </tr>
                             ))}

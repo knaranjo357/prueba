@@ -77,7 +77,8 @@ const Cart: React.FC = () => {
         valor_restaurante: calculateTotalPrice(items),
         valor_domicilio: deliveryPrice,
         metodo_pago: customerInfo.paymentMethod,
-        estado: 'confirmado'
+        estado: 'confirmado',
+        fuente: 'menu_digital'
       };
 
       const response = await fetch('https://n8n.alliasoft.com/webhook/luis-res/hacer-pedido', {

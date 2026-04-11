@@ -345,6 +345,7 @@ export const useManualOrder = (onOrderSaved?: () => void) => {
       metodo_pago: metodoPago,
       estado: "pidiendo",
       numero: numeroFinal,
+      fuente: "manual",
     };
 
     try {

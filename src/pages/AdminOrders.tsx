@@ -368,6 +368,7 @@ const buildFullPayload = (o: Order, override?: Partial<Order>) => {
     valor_domicilio: merged.valor_domicilio ?? 0,
     metodo_pago: merged.metodo_pago ?? '',
     estado: merged.estado ?? '',
+    fuente: merged.fuente ?? '',
   };
 };
 
