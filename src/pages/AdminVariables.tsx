@@ -41,7 +41,7 @@ const AGENTS_CONFIG = [
   { label: 'Cerrado', value: 'Cerrado', image: URL_CERRADO },
 ];
 
-type VarKey = 'sopa-dia' | 'ensalada-dia' | 'principio-dia' | 'nequi' | 'almuerzo' | 'frase';
+type VarKey = 'sopa-dia' | 'ensalada-dia' | 'principio-dia' | 'nequi' | 'almuerzo';
 type VarForm = Record<VarKey, string>;
 
 const defaultForm: VarForm = {
@@ -50,7 +50,6 @@ const defaultForm: VarForm = {
   'principio-dia': '',
   nequi: '',
   almuerzo: '',
-  frase: '',
 };
 
 const AdminVariables: React.FC = () => {
@@ -96,7 +95,6 @@ const AdminVariables: React.FC = () => {
         'principio-dia': data['principio-dia'] ?? '',
         nequi: data['nequi'] ?? '',
         almuerzo: data['almuerzo'] ?? '',
-        frase: data['frase'] ?? '',
       };
 
       setForm(next);
@@ -145,7 +143,6 @@ const AdminVariables: React.FC = () => {
           'principio-dia': form['principio-dia'],
           nequi: form['nequi'],
           almuerzo: form['almuerzo'],
-          frase: form['frase'],
           agentes: JSON.stringify(fragments),
           ...compiledPrompts
         }),
@@ -316,29 +313,6 @@ const AdminVariables: React.FC = () => {
             </div>
           </div>
 
-          {/* Tarjeta Instrucciones para el Agente */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 border-l-4 border-l-purple-500">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2 border-b pb-2 border-gray-100">
-              <MessageSquareText className="text-purple-600" size={20} /> Instrucciones para el
-              Agente
-            </h3>
-
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">
-                Notas Especiales (Frase)
-              </label>
-              <textarea
-                value={form['frase']}
-                onChange={(e) => handleChange('frase', e.target.value)}
-                placeholder="Ej: Hoy no hay servicio a domicilio por lluvia..."
-                className="w-full p-3 bg-purple-50/50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all text-sm font-medium text-gray-700 min-h-[100px]"
-                disabled={loading}
-              />
-              <p className="text-xs text-gray-400 mt-2">
-                * Estas notas serán leídas por el agente para dar contexto adicional.
-              </p>
-            </div>
-          </div>
 
           {/* Tarjeta Pagos */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
@@ -367,11 +341,54 @@ const AdminVariables: React.FC = () => {
             <Bot className="text-purple-600" size={20} /> Selección de Agente
           </h3>
 
+          <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-4">
+            {/* Toggle Comodín */}
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-gray-700">Activar Comodín</span>
+                <span className="text-xs text-gray-400">Modo de respuesta comodín</span>
+              </div>
+              <button
+                onClick={() => handleChange('almuerzo', form.almuerzo === 'comodin' ? '' : 'comodin')}
+                disabled={loading}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
+                  form.almuerzo === 'comodin' ? 'bg-purple-600' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    form.almuerzo === 'comodin' ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="h-px bg-gray-200" />
+
+            {/* Toggle Festivo */}
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-gray-700">Activar Festivo</span>
+                <span className="text-xs text-gray-400">Modo de respuesta para días festivos</span>
+              </div>
+              <button
+                onClick={() => handleChange('almuerzo', form.almuerzo === 'festivo' ? '' : 'festivo')}
+                disabled={loading}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
+                  form.almuerzo === 'festivo' ? 'bg-amber-500' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    form.almuerzo === 'festivo' ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
           <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-800 border border-blue-100">
             <span className="font-bold">Agente actual:</span> {form.almuerzo || 'Ninguno seleccionado'}
-            <p className="text-xs mt-1 text-blue-600/80">
-              Selecciona el escenario que atenderá el agente hoy.
-            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 content-start">
@@ -379,13 +396,12 @@ const AdminVariables: React.FC = () => {
               const isActive = form['almuerzo'] === agent.value;
 
               return (
-                <button
+                <div
                   key={agent.value}
-                  onClick={() => handleChange('almuerzo', agent.value)}
                   className={`relative flex flex-col items-center p-3 rounded-xl border-2 transition-all duration-200 group text-left ${
                     isActive
                       ? 'border-purple-500 bg-purple-50 shadow-md ring-2 ring-purple-200'
-                      : 'border-gray-100 hover:border-purple-200 hover:bg-gray-50'
+                      : 'border-gray-100'
                   }`}
                 >
                   <div className="w-full flex justify-between items-center mb-2">
@@ -404,7 +420,7 @@ const AdminVariables: React.FC = () => {
                     <img
                       src={agent.image}
                       alt={agent.label}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      className="w-full h-full object-cover"
                       loading="lazy"
                     />
 
@@ -439,7 +455,7 @@ const AdminVariables: React.FC = () => {
                       </div>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>

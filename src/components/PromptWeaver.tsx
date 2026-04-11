@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import {
   Plus,
   Trash2,
@@ -191,19 +191,33 @@ function FragmentCard({ fragment, index, total, onUpdate, onDelete, onMoveUp, on
   const isLast = index === total - 1;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const adjustHeight = useCallback(() => {
+  useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
+      // Usamos un pequeño truco para evitar el salto de scroll al ajustar altura
+      const currentHeight = textarea.style.height;
       textarea.style.height = 'auto';
-      textarea.style.height = `${textarea.scrollHeight}px`;
+      const newHeight = textarea.scrollHeight;
+      
+      // Solo aplicamos si hay cambio real para evitar layouts innecesarios
+      if (currentHeight !== `${newHeight}px`) {
+        textarea.style.height = `${newHeight}px`;
+      } else {
+        textarea.style.height = currentHeight;
+      }
     }
-  }, []);
+  }, [fragment.text]);
 
   useEffect(() => {
-    adjustHeight();
-    window.addEventListener('resize', adjustHeight);
-    return () => window.removeEventListener('resize', adjustHeight);
-  }, [fragment.text, adjustHeight]);
+    const handler = () => {
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      }
+    };
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const toggleAgent = (agentId: string) => {
     const newIds = fragment.agentIds.includes(agentId)
@@ -251,6 +265,7 @@ function FragmentCard({ fragment, index, total, onUpdate, onDelete, onMoveUp, on
           value={fragment.text}
           onChange={(e) => onUpdate(fragment.id, { text: e.target.value })}
           rows={1}
+          spellCheck={false}
         />
       </div>
 
