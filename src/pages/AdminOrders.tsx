@@ -282,7 +282,7 @@ const sendToRawBT = async (ticketLines: string[], barcodeValue?: string): Promis
   try {
     (window as any).location.href = url;
     return;
-  } catch {}
+  } catch { }
 
   try {
     const a = document.createElement('a');
@@ -292,7 +292,7 @@ const sendToRawBT = async (ticketLines: string[], barcodeValue?: string): Promis
     a.click();
     document.body.removeChild(a);
     return;
-  } catch {}
+  } catch { }
 
   throw new Error('No se pudo invocar RawBT.');
 };
@@ -427,7 +427,11 @@ const OrdersTab: React.FC = () => {
       const res = await fetch(MENU_API);
       const data = await res.json();
       if (Array.isArray(data)) {
-        setMenuItems(data.sort((a: any, b: any) => a.nombre.localeCompare(b.nombre)));
+        setMenuItems(
+          data.sort((a: any, b: any) =>
+            String(a?.nombre ?? '').localeCompare(String(b?.nombre ?? ''))
+          )
+        );
       }
     } catch (e) {
       console.error('Error menu', e);
@@ -436,16 +440,25 @@ const OrdersTab: React.FC = () => {
 
   // Filtros Menú
   const filteredMenu = useMemo(() => {
-    return menuItems.filter(item => {
-      const matchSearch = item.nombre.toLowerCase().includes(menuSearch.toLowerCase());
-      const matchCat = menuCat === 'Todas' || item.categorias.includes(menuCat);
+    const query = String(menuSearch || '').toLowerCase();
+
+    return menuItems.filter((item) => {
+      const nombre = String(item?.nombre ?? '').toLowerCase();
+      const categorias = Array.isArray(item?.categorias) ? item.categorias : [];
+
+      const matchSearch = nombre.includes(query);
+      const matchCat = menuCat === 'Todas' || categorias.includes(menuCat);
+
       return matchSearch && matchCat;
     });
   }, [menuItems, menuSearch, menuCat]);
 
   const categories = useMemo(() => {
     const s = new Set<string>(['Todas']);
-    menuItems.forEach(i => i.categorias.forEach(c => s.add(c)));
+    menuItems.forEach(i => {
+      const categorias = Array.isArray(i?.categorias) ? i.categorias : [];
+      categorias.forEach(c => s.add(c));
+    });
     return Array.from(s).sort();
   }, [menuItems]);
 
@@ -746,7 +759,7 @@ const OrdersTab: React.FC = () => {
         const updated = { ...order, estado: 'impreso' };
         setOrders(prev => prev.map(o => (o.row_number === order.row_number ? updated : o)));
         await postOrderFull(order, { estado: 'impreso' });
-      } catch (e) {}
+      } catch (e) { }
     }
   };
 
@@ -783,8 +796,8 @@ const OrdersTab: React.FC = () => {
         const totalStr = String((order.valor_restaurante || 0) + (order.valor_domicilio || 0)).toLowerCase();
         const detailsStr = String(order['detalle pedido'] || '').toLowerCase();
 
-        searchMatch = idStr.includes(q) || numStr.includes(q) || nomStr.includes(q) || 
-                      valRestStr.includes(q) || valDomStr.includes(q) || totalStr.includes(q) || detailsStr.includes(q);
+        searchMatch = idStr.includes(q) || numStr.includes(q) || nomStr.includes(q) ||
+          valRestStr.includes(q) || valDomStr.includes(q) || totalStr.includes(q) || detailsStr.includes(q);
       }
 
       return statusMatch && paymentMatch && searchMatch;
